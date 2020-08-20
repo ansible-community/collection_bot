@@ -1,0 +1,56 @@
+- {color: 006b75, description: 'This issue/PR relates to a feature request', name: feature}
+- {color: 0e8a16, description: 'Has been reviewed during a PR review Day. https://github.com/ansible/community/issues/407', name: pr_day}
+- {color: 0e8a16, description: 'PR created by owner/maintainer', name: owner_pr}
+- {color: 71bc1c, description: 'action plugin', name: action}
+- {color: 71bc1c, description: 'become plugin', name: become}
+- {color: 71bc1c, description: 'cache plugin', name: cache}
+- {color: 71bc1c, description: 'callback plugin', name: callback}
+- {color: 71bc1c, description: 'cliconf plugin', name: cliconf}
+- {color: 71bc1c, description: 'connection plugin', name: connection}
+- {color: 71bc1c, description: 'docs_fragments plugin (shared docs)', name: docs_fragments}
+- {color: 71bc1c, description: 'filter plugin', name: filter}
+- {color: 71bc1c, description: 'httpapi connection plugin', name: httpapi}
+- {color: 71bc1c, description: 'inventory plugin', name: inventory}
+- {color: 71bc1c, description: 'lookup plugin', name: lookup}
+- {color: 71bc1c, description: 'module', name: module}
+- {color: 71bc1c, description: 'module_utils', name: module_utils}
+- {color: 71bc1c, description: 'netconf plugin', name: netconf}
+- {color: 71bc1c, description: 'plugin (any type)', name: plugins}
+- {color: 71bc1c, description: 'shell plugin', name: shell}
+- {color: 71bc1c, description: 'strategy plugin', name: strategy}
+- {color: 71bc1c, description: 'terminal plugin', name: terminal}
+- {color: 71bc1c, description: 'tests', name: tests}
+- {color: 71bc1c, description: 'tests/integration', name: integration}
+- {color: 71bc1c, description: 'tests/units', name: units}
+- {color: 71bc1c, description: 'vars plugin', name: vars}
+- {color: 73d15c, description: 'Good for new comers and easy to start with contribution', name: easyfix}
+- {color: 8aea94, description: 'Help guide this first time contributor', name: new_contributor}
+- {color: b60205, description: 'Push fixes to PR branch to re-run CI', name: ci_verified}
+- {color: b60205, description: 'This PR requires CI testing to be performed. Please close and re-open this PR to trigger CI', name: needs_ci}
+- {color: c2e0c6, description: 'Brand new inventory plugin', name: new_inventory}
+- {color: c2e0c6, description: 'Carefully review directory name and location', name: new_module_directory}
+- {color: c2e0c6, description: 'New module', name: new_module}
+- {color: c2e0c6, description: 'New plugin', name: new_plugin}
+- {color: d93f0b, description: 'CI is older than 7 days, rerun before merging', name: stale_ci}
+- {color: d93f0b, description: 'Needs help. Feel free to engage to get things unblocked', name: waiting_on_contributor}
+- {color: d93f0b, description: 'This PR contains at least one merge commit. Please resolve!', name: merge_commit}
+- {color: d93f0b, description: 'This PR fails CI tests or a maintainer has requested a review/revision of the PR', name: needs_revision}
+- {color: d93f0b, description: 'This issue requires further information. Please answer any outstanding questions', name: needs_info}
+- {color: d93f0b, description: 'This issue/PR has an incomplete description. Please fill in the proposed template correctly', name: needs_template}
+- {color: d93f0b, description: 'Work in progress', name: WIP}
+- {color: d93f0b, description: 'https://docs.ansible.com/ansible/devel/dev_guide/developing_rebasing.html', name: needs_rebase}
+- {color: e86914, description: 'PR needs to be backported to the stable-1 branch', name: needs_backport_to_stable_1}
+- {color: ededed, description: 'Hopefully easy to review', name: small_patch}
+- {color: ededed, description: null, name: affects_1}
+- {color: ededed, description: null, name: affects_2.10}
+- {color: ededed, description: null, name: community_review}
+- {color: ededed, description: null, name: deprecated}
+- {color: ededed, description: null, name: docs}
+- {color: ededed, description: null, name: has_issue}
+- {color: ededed, description: null, name: has_pr}
+- {color: ededed, description: null, name: needs_repo}
+- {color: ededed, description: null, name: needs_triage}
+- {color: ededed, description: null, name: python3}
+- {color: ededed, description: null, name: shipit}
+- {color: ededed, description: null, name: traceback}
+- {color: fbca04, description: 'This issue/PR relates to a bug', name: bug}
