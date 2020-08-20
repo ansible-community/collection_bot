@@ -39,7 +39,7 @@ with open('labels.yml', 'w') as f:
 with open('labels.yml', 'rb') as f:
     want_labels = yaml.safe_load(f)
 
-repo = g.get_repo("ansible-collections/community.general")
+repo = g.get_repo("ansible-collections/FIXMEREPONAME")
 
 # label_response = dest_repo.get_labels()
 # current_labels = [{ 'name': i.name, 'color': i.color, 'description': i.description } for i in label_response]
