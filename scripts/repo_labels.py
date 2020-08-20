@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-#
-# Simplified BSD License https://opensource.org/licenses/BSD-2-Clause)
-#
 import os
 import sys
 import yaml
@@ -45,14 +42,14 @@ repo = g.get_repo("ansible-collections/FIXMEREPONAME")
 # current_labels = [{ 'name': i.name, 'color': i.color, 'description': i.description } for i in label_response]
 # we could do something with comparing the current and desired labels here
 
-for i in want_labels:
-    if i['description'] is not None:
-        create_args = dict(name=i['name'], color=i['color'], description=i['description'])
+for label in want_labels:
+    if label['description'] is not None:
+        create_args = dict(name=label['name'], color=label['color'], description=label['description'])
     else:
-        create_args = dict(name=i['name'], color=i['color'])
+        create_args = dict(name=label['name'], color=label['color'])
 
     try:
         repo.create_label(**create_args)
     except GithubException as e:
         if e.data['errors'][0]['code'] == 'already_exists':
-            repo.get_label(i['name']).edit(**create_args)
+            repo.get_label(label['name']).edit(**create_args)
