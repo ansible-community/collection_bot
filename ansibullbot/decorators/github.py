@@ -167,7 +167,8 @@ def RateLimited(fn):
                         logging.error('breakpoint!')
                         import epdb; epdb.st()
                     else:
-                        raise Exception('unhandled message type')
+                        raise
+                        # raise Exception('unhandled message type')
             except TypeError as e:
                 if "unsupported operand type(s) for -=" in e.message:
                     stime = get_reset_time(fn, args)

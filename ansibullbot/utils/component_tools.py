@@ -32,7 +32,6 @@ class AnsibleComponentMatcher(object):
 
     BOTMETA = {}
     INDEX = {}
-    REPO = u'https://github.com/ansible/ansible'
     STOPWORDS = [u'ansible', u'core', u'plugin']
     STOPCHARS = [u'"', "'", u'(', u')', u'?', u'*', u'`', u',', u':', u'?', u'-']
     BLACKLIST = [u'new module', u'new modules']
@@ -104,15 +103,12 @@ class AnsibleComponentMatcher(object):
         u'winrm': u'lib/ansible/plugins/connection/winrm.py'
     }
 
-    def __init__(self, gitrepo=None, botmetafile=None, cachedir=None, commit=None, email_cache=None, file_indexer=None):
+    def __init__(self, gitrepo, botmetafile=None, cachedir=None, commit=None, email_cache=None, file_indexer=None):
         self.botmetafile = botmetafile
         self.email_cache = email_cache
         self.commit = commit
 
-        if gitrepo:
-            self.gitrepo = gitrepo
-        else:
-            self.gitrepo = GitRepoWrapper(cachedir=cachedir, repo=self.REPO, commit=self.commit)
+        self.gitrepo = gitrepo
 
         if file_indexer:
             self.file_indexer = file_indexer
@@ -152,7 +148,10 @@ class AnsibleComponentMatcher(object):
                 continue
             if not self.gitrepo.exists(fn):
                 continue
-            mname = os.path.basename(fn)
+            # Some collections like community.general may have symlinks for modules in the root
+            # of plugins/modules/
+            # we only want to match on the real location (which is in botmeta)
+            mname = os.path.realpath(os.path.basename(fn))
             mname = mname.replace(u'.py', u'').replace(u'.ps1', u'')
             if mname.startswith(u'__'):
                 continue
@@ -179,32 +178,23 @@ class AnsibleComponentMatcher(object):
         # make a list of names by calling ansible-doc
         checkoutdir = self.gitrepo.checkoutdir
         checkoutdir = os.path.abspath(checkoutdir)
-        cmd = u'. {}/hacking/env-setup; ansible-doc -t module -F'.format(checkoutdir)
-        logging.debug(cmd)
-        (rc, so, se) = run_command(cmd, cwd=checkoutdir)
-        if rc:
-            raise Exception("'ansible-doc' command failed (%s, %s %s)" % (rc, so, se))
-        lines = to_text(so).split(u'\n')
-        for line in lines:
+        for root, directories, filenames in os.walk(os.path.join(checkoutdir, 'plugins', 'modules')):
+            for filename in filenames:
+                naive_fpath = os.path.realpath(os.path.join(root, filename))
+                fpath = naive_fpath.replace(checkoutdir + u'/', u'')
+                assert fpath != naive_fpath
 
-            # compat for macos tmpdirs
-            if u' /private' in line:
-                line = line.replace(u' /private', u'', 1)
+                # Record the module name
+                mname = os.path.basename(fpath)
+                if not mname.endswith('.py'):
+                    # Not a module as all modules we use are either python or have docs saved in
+                    # a python file
+                    continue
+                mname = mname[:-3]
+                if mname not in self.MODULE_NAMES:
+                    self.MODULE_NAMES.append(mname)
 
-            parts = line.split()
-            parts = [x.strip() for x in parts]
-
-            if len(parts) != 2 or checkoutdir not in line:
-                continue
-
-            mname = parts[0]
-            if mname not in self.MODULE_NAMES:
-                self.MODULE_NAMES.append(mname)
-
-            fpath = parts[1]
-            fpath = fpath.replace(checkoutdir + u'/', u'')
-
-            if fpath not in self.MODULES:
+                # Modules indexed by filepath
                 self.MODULES[fpath] = {
                     u'name': mname,
                     u'repo_filename': fpath,
@@ -893,7 +883,7 @@ class AnsibleComponentMatcher(object):
             ix = body_paths.index(u'plugin')
             body_paths[ix] = u'plugins'
 
-        if not context or u'lib/ansible/modules' in context:
+        if not context or u'plugins/modules' in context:
             mmatch = self.find_module_match(body)
             if mmatch:
                 if isinstance(mmatch, list) and len(mmatch) > 1:
@@ -1054,7 +1044,7 @@ class AnsibleComponentMatcher(object):
         # be factored in ...
         #   https://github.com/ansible/ansibullbot/issues/1042
         #   https://github.com/ansible/ansibullbot/issues/1053
-        if u'lib/ansible/modules' in filename:
+        if u'plugins/modules' in filename:
             mmatch = self.find_module_match(filename)
             if mmatch and len(mmatch) == 1 and mmatch[0][u'filename'] == filename:
                 meta[u'metadata'].update(mmatch[0][u'metadata'])
@@ -1134,8 +1124,8 @@ class AnsibleComponentMatcher(object):
                 if u'notified' in fdata:
                     meta[u'notify'] += fdata[u'notified']
 
-        if u'lib/ansible/modules' in filename:
-            topics = [x for x in paths if x not in [u'lib', u'ansible', u'modules']]
+        if u'plugins/modules' in filename:
+            topics = [x for x in paths if x not in [u'plugins', u'modules']]
             topics = [x for x in topics if x != os.path.basename(filename)]
             if len(topics) == 2:
                 meta[u'topic'] = topics[0]
@@ -1146,10 +1136,10 @@ class AnsibleComponentMatcher(object):
             meta[u'namespace'] = u'/'.join(topics)
 
         # set namespace maintainers (skip !modules for now)
-        if filename.startswith(u'lib/ansible/modules'):
+        if filename.startswith(u'plugins/modules'):
             ns = meta.get(u'namespace')
             keys = self.BOTMETA[u'files'].keys()
-            keys = [x for x in keys if x.startswith(os.path.join(u'lib/ansible/modules', ns))]
+            keys = [x for x in keys if x.startswith(os.path.join(u'plugins/modules', ns))]
             ignored = []
 
             for key in keys:
@@ -1160,28 +1150,8 @@ class AnsibleComponentMatcher(object):
                 while ignoree in meta[u'namespace_maintainers']:
                     meta[u'namespace_maintainers'].remove(ignoree)
 
-        # reconcile support levels
-        if filename in support_levels:
-            # exact match
-            meta[u'support'] = support_levels[filename]
-            meta[u'supported_by'] = support_levels[filename]
-            logging.debug(u'%s support == %s' % (filename, meta[u'supported_by']))
-        else:
-            # pick the closest match
-            keys = support_levels.keys()
-            keys = sorted(keys, key=len, reverse=True)
-            if keys:
-                meta[u'support'] = support_levels[keys[0]]
-                meta[u'supported_by'] = support_levels[keys[0]]
-                logging.debug(u'%s support == %s' % (keys[0], meta[u'supported_by']))
-
-        # new modules should default to "community" support
-        if filename.startswith(u'lib/ansible/modules') and filename not in self.gitrepo.files:
-            meta[u'support'] = u'community'
-            meta[u'supported_by'] = u'community'
-
         # test targets for modules should inherit from their modules
-        if filename.startswith(u'test/integration/targets') and filename not in self.BOTMETA[u'files']:
+        if filename.startswith(u'tests/integration/targets') and filename not in self.BOTMETA[u'files']:
             whitelist = [
                 u'labels',
                 u'ignore',
@@ -1213,6 +1183,7 @@ class AnsibleComponentMatcher(object):
                 meta[u'support'] = u'community'
 
         # it's okay to remove things from legacy-files.txt
+        # FIXME update paths, may vary based on version of ansible-test
         if filename == u'test/sanity/pep8/legacy-files.txt' and not meta[u'support']:
             meta[u'support'] = u'community'
 

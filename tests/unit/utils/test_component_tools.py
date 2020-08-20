@@ -46,7 +46,7 @@ class TestComponentMatcher(TestCase):
     def setUpClass(cls):
         """Init the matcher"""
         cachedir = tempfile.mkdtemp()
-        gitrepo = GitShallowRepo(cachedir=cachedir, repo=ComponentMatcher.REPO)
+        gitrepo = GitShallowRepo(cachedir=cachedir, repo='https://github.com/ansible/ansible')
         gitrepo.update()
 
         file_indexer = FileIndexer(gitrepo=gitrepo)
@@ -486,7 +486,7 @@ class TestComponentMatcherInheritance(TestCase):
     def setUpClass(cls):
         """Init the matcher"""
         cachedir = tempfile.mkdtemp()
-        gitrepo = GitShallowRepo(cachedir=cachedir, repo=ComponentMatcher.REPO)
+        gitrepo = GitShallowRepo(cachedir=cachedir, repo='https://github.com/ansible/ansible')
         gitrepo.update()
 
         file_indexer = FileIndexer(gitrepo=gitrepo)

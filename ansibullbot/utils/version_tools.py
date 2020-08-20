@@ -49,25 +49,11 @@ class AnsibleVersionIndexer(object):
     def _get_devel_version(self):
         # get devel's version
         vpath = os.path.join(self.checkoutdir, u'VERSION')
-        vpath = os.path.expanduser(vpath)
-        devel_version = None
+        #vpath = os.path.expanduser(vpath)
+        #devel_version = None
 
-        if os.path.isfile(vpath):
-            with open(vpath, 'rb') as f:
-                devel_version = f.read().strip().split()[0]
-                self.VALIDVERSIONS[devel_version] = u'devel'
-        else:
-            # __version__ = '2.6.0dev0'
-            vpath = os.path.join(self.checkoutdir, u'lib/ansible/release.py')
-            with open(vpath, 'r') as f:
-                flines = f.readlines()
-            for line in flines:
-                line = line.strip()
-                if line.startswith(u'__version__'):
-                    devel_version = line.split(u'=')[-1].strip()
-                    devel_version = devel_version.replace(u"'", u'')
-                    devel_version = devel_version.replace(u'"', u'')
-                    break
+        devel_version = "2.10.0.0"
+        self.VALIDVERSIONS[devel_version] = u'devel'
 
         return devel_version
 

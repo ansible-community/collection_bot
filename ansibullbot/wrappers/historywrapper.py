@@ -618,11 +618,11 @@ class HistoryWrapper(object):
                     break
         return labeled
 
-    def get_boilerplate_comments(self, botname='ansibot', botnames=None, dates=False, content=True):
+    def get_boilerplate_comments(self, botname=None, dates=False, content=True):
         boilerplates = []
-        if botnames:
+        if C.DEFAULT_BOTNAMES:
             comments = self._find_events_by_actor(u'commented',
-                                                  botnames,
+                                                  C.DEFAULT_BOTNAMES,
                                                   maxcount=999)
         else:
             comments = self._find_events_by_actor(u'commented',
@@ -650,10 +650,10 @@ class HistoryWrapper(object):
 
         return boilerplates
 
-    def get_boilerplate_comments_content(self, botname='ansibot', bfilter=None):
+    def get_boilerplate_comments_content(self, bfilter=None):
         boilerplates = []
         comments = self._find_events_by_actor(u'commented',
-                                              botname,
+                                              C.DEFAULT_GITHUB_USERNAME,
                                               maxcount=999)
         for comment in comments:
             if not comment.get(u'body'):
@@ -669,9 +669,9 @@ class HistoryWrapper(object):
                     boilerplates.append(comment[u'body'])
         return boilerplates
 
-    def last_date_for_boilerplate(self, boiler, botname='ansibot'):
+    def last_date_for_boilerplate(self, boiler):
         last_date = None
-        bps = self.get_boilerplate_comments(botname=botname, dates=True)
+        bps = self.get_boilerplate_comments(botname=C.DEFAULT_GITHUB_USERNAME, dates=True)
         for bp in bps:
             if bp[1] == boiler:
                 last_date = bp[0]

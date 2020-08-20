@@ -94,7 +94,7 @@ class ModuleIndexer(object):
         if gitrepo:
             self.gitrepo = gitrepo
         else:
-            self.gitrepo = GitRepoWrapper(cachedir=cachedir, repo=u'https://github.com/ansible/ansible')
+            self.gitrepo = GitRepoWrapper(cachedir=cachedir, repo=u'https://github.com/ansible-collections/community.general')
 
         # sqlalchemy
         unc = os.path.join(cachedir, u'ansible_module_indexer.db')
@@ -264,7 +264,8 @@ class ModuleIndexer(object):
             return None
         elif u'/' in pattern and not self._find_match(pattern, exact=True):
             # https://github.com/ansible/ansible/issues/20520
-            if not pattern.startswith(u'lib/'):
+            # FIXME what's this for?
+            if not pattern.startswith(u'plugins/'):
                 keys = self.modules.keys()
                 for k in keys:
                     if pattern in k:
@@ -322,11 +323,11 @@ class ModuleIndexer(object):
         """Make a list of known modules"""
 
         matches = []
-        module_dir = os.path.join(self.gitrepo.checkoutdir, u'lib/ansible/modules')
+        module_dir = os.path.join(self.gitrepo.checkoutdir, u'plugins/modules')
         module_dir = os.path.expanduser(module_dir)
         for root, _, filenames in os.walk(module_dir):
             for filename in filenames:
-                if u'lib/ansible/modules' in root and not filename == u'__init__.py':
+                if u'plugins/modules' in root and not filename == u'__init__.py':
                     matches.append(os.path.join(root, filename))
 
         matches = sorted(set(matches))
@@ -407,7 +408,7 @@ class ModuleIndexer(object):
             )
 
             mdict[u'repo_filename'] = mdict[u'filepath']\
-                .replace(u'lib/ansible/modules/%s/' % mdict[u'repository'], u'')
+                .replace(u'plugins/modules/%s/' % mdict[u'repository'], u'')
 
             # clustering/consul
             mdict[u'namespaced_module'] = mdict[u'repo_filename']
@@ -776,7 +777,7 @@ class ModuleIndexer(object):
                 self.modules[k][u'namespace_maintainers'] = nms
 
     def split_topics_from_path(self, module_file):
-        subpath = module_file.replace(u'lib/ansible/modules/', u'')
+        subpath = module_file.replace(u'plugins/modules/', u'')
         path_parts = subpath.split(u'/')
         topic = path_parts[0]
 

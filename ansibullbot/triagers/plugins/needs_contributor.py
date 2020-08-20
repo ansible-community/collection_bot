@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
+import ansibullbot.constants as C
 
 def get_needs_contributor_facts(triager, issuewrapper, meta):
     needs_contributor = False
 
     for event in issuewrapper.history.history:
-        if event[u'actor'] in triager.BOTNAMES:
+        if event[u'actor'] in C.DEFAULT_BOTNAMES:
             continue
 
         if event[u'event'] == u'labeled':

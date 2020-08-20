@@ -45,6 +45,9 @@ def get_small_patch_facts(iw):
             if changed_file.filename.startswith(u'test/'):
                 continue
 
+            if changed_file.filename.startswith(u'changelogs/fragments/'):
+                continue
+
             if not changed_file.raw_data[u'status'] == u'modified':
                 return sfacts
 

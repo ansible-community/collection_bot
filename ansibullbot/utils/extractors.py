@@ -401,6 +401,18 @@ def _remove_markdown_comments(rawtext):
     return u''.join(cleaned)
 
 
+def remove_markdown_blockquotes(rawtext):
+    """
+    Remove blockquote lines from markdown text
+
+    Blockquotes are used to quote replied-to comments in github so it can be useful to remove them
+    in some instances.
+    """
+    lines = [line for line in rawtext.split(u'\n') if not line.startswith(u'>')]
+
+    return '\n'.join(lines)
+
+
 def extract_pr_number_from_comment(rawtext, command='resolved_by_pr'):
     # "resolved_by_pr 5136" --> 5136
     # "resolved_by_pr #5136" --> 5136
