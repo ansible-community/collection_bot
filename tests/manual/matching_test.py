@@ -14,6 +14,7 @@ from ansibullbot.utils.systemtools import run_command
 from ansibullbot.utils.component_tools import AnsibleComponentMatcher
 from ansibullbot.utils.file_tools import FileIndexer
 from ansibullbot.utils.gh_gql_client import GithubGraphQLClient
+from ansibullbot.utils.git_tools import GitRepoWrapper
 from ansibullbot.utils.moduletools import ModuleIndexer
 #from ansibullbot.utils.webscraper import GithubWebScraper
 from ansibullbot.triagers.plugins.component_matching import get_component_match_facts
@@ -153,7 +154,8 @@ def main():
     MI = ModuleIndexer(cachedir=CACHEDIR, gh_client=GQLC, blames=False, commits=False)
 
     #CM = ComponentMatcher(cachedir=CACHEDIR, module_indexer=MI, file_indexer=FI)
-    CM = AnsibleComponentMatcher(cachedir=CACHEDIR)
+    GR = GitRepoWrapper(cachedir=CACHEDIR, repo='https://github.com/ansible/ansible')
+    CM = AnsibleComponentMatcher(GR, cachedir=CACHEDIR)
 
     for k,v in MI.modules.items():
         if k in MATCH_MAP:

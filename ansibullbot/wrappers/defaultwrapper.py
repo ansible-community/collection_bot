@@ -173,10 +173,11 @@ class DefaultWrapper(object):
             lines = body.split(u'\n')
             lines = [y.strip() for y in lines if y.strip()]
 
+            # FIXME, should this be `in C.DEFAULT_BOTNAMES?
             if lines[-1].startswith(u'<!---') \
                     and lines[-1].endswith(u'--->') \
                     and u'boilerplate:' in lines[-1]\
-                    and x.user.login == u'ansibot':
+                    and x.user.login == C.DEFAULT_GITHUB_USERNAME:
 
                 parts = lines[-1].split()
                 boilerplate = parts[2]
@@ -535,22 +536,15 @@ class DefaultWrapper(object):
         """Extract templated data from an issue body"""
 
         if self.is_issue():
-            tfile = u'.github/ISSUE_TEMPLATE/bug_report.md'
+            tfile = u'bug_report.md'
         else:
-            tfile = u'.github/PULL_REQUEST_TEMPLATE.md'
+            tfile = u'PULL_REQUEST_TEMPLATE.md'
 
-        # use the fileindexer whenever possible to conserve ratelimits
-        if self.file_indexer:
-            tf_content = self.file_indexer.get_file_content(tfile)
-        else:
-            try:
-                tf = self.repo.get_file_contents(tfile)
-                tf_content = tf.decoded_content
-            except Exception:
-                logging.warning(u'repo does not have {}'.format(tfile))
-                tf_content = u''
+        # FIXME See if templates exist in collection, if not fall back to gh/ansible-collections/.github repo
+        tf_content = to_text(open(tfile,"rb").read())
 
-        # pull out the section names from the tempalte
+
+        # pull out the section names from the template
         tf_sections = extract_template_sections(tf_content, header=self.TEMPLATE_HEADER)
 
         # what is required?
@@ -590,7 +584,7 @@ class DefaultWrapper(object):
 
             # FIXME - abstract this into a historywrapper method
             vlabels = [x for x in self.history.history if x[u'event'] == u'labeled']
-            vlabels = [x for x in vlabels if x[u'actor'] not in [u'ansibot', u'ansibotdev']]
+            vlabels = [x for x in vlabels if x[u'actor'] not in C.DEFAULT_BOTNAMES]
             vlabels = [x[u'label'] for x in vlabels if x[u'label'].startswith(u'affects_')]
             vlabels = [x for x in vlabels if x.startswith(u'affects_')]
 
@@ -600,6 +594,7 @@ class DefaultWrapper(object):
                 version = versions[-1]
                 template_data[u'ansible version'] = to_text(version)
 
+        # Don't think "C:" (component) labels are needed for collections
         if u'COMPONENT NAME' in tf_sections and u'component name' not in template_data:
             if self.is_pullrequest():
                 fns = self.files
@@ -959,7 +954,8 @@ class DefaultWrapper(object):
     def submitter(self):
         # auto-migrated issue by ansibot{-dev}
         # figure out the original submitter
-        if self.instance.user.login.startswith(u'ansibot'):
+        # FIXME Is this right?
+        if self.instance.user.login in C.DEFAULT_BOTNAMES:
             m = re.match(u'From @(.*) on', self.instance.body)
             if m:
                 return m.group(1)
@@ -1144,7 +1140,7 @@ class DefaultWrapper(object):
     def new_modules(self):
         new_modules = self.new_files
         new_modules = [
-            x for x in new_modules if x.startswith(u'lib/ansible/modules')
+            x for x in new_modules if x.startswith(u'plugins/modules')
         ]
         new_modules = [
             x for x in new_modules if not os.path.basename(x) == u'__init__.py'
@@ -1346,10 +1342,13 @@ class DefaultWrapper(object):
 
     @property
     def from_fork(self):
+        """
+        Returns False if this PR is from a branch on the main branch
+        """
         if not self.incoming_repo_exists:
             return True
 
-        return self.incoming_repo_slug != u'ansible/ansible'
+        return self.incoming_repo_slug != self.repo.repo_path
 
     @RateLimited
     def get_commit_parents(self, commit):

@@ -21,8 +21,10 @@ import six
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed, RetryError, TryAgain
 
-
-ANSIBLE_PROJECT_ID = u'573f79d02a8192902e20e34b'
+# FIXME: Need to get all of the Shippable Project IDs for the various collections and define them here
+# 5e664a167c32620006c9fa50 community.general
+#ANSIBLE_PROJECT_ID = u'573f79d02a8192902e20e34b'
+ANSIBLE_PROJECT_ID = u'5e664a167c32620006c9fa50' # community.general
 SHIPPABLE_URL = C.DEFAULT_SHIPPABLE_URL
 ANSIBLE_RUNS_URL = u'%s/runs?projectIds=%s&isPullRequest=True' % (
     SHIPPABLE_URL,
@@ -395,12 +397,16 @@ class ShippableRuns(object):
         logging.debug(run_id)
         return run_id
 
-    def rebuild(self, run_number, issueurl=None):
+    def rebuild(self, run_number, issueurl=None, rerunFailedOnly=False):
         """trigger a new run"""
 
         # always pass the runId in a dict() to requests
         run_id = self.get_run_id(run_number)
         data = {u'runId': run_id}
+
+        # failed jobs only
+        if rerunFailedOnly:
+            data[u'rerunFailedOnly'] = True
 
         newbuild_url = u"%s/projects/%s/newBuild" % (SHIPPABLE_URL, ANSIBLE_PROJECT_ID)
         response = self.fetch(newbuild_url, verb='post', data=data, timeout=TIMEOUT)
@@ -408,6 +414,10 @@ class ShippableRuns(object):
             raise Exception("Unable to POST %r to %r (%r)" % (data, newbuild_url, issueurl))
         self.check_response(response)
         return response
+
+    def rebuild_failed(self, run_number, issueurl=None):
+        """trigger a new run"""
+        return self.rebuild(run_number, issueurl=issueurl, rerunFailedOnly=True)
 
     def cancel(self, run_number, issueurl=None):
         """cancel existing run"""

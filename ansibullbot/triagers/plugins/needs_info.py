@@ -2,8 +2,12 @@
 
 import datetime
 import logging
+
 import pytz
+
 import ansibullbot.constants as C
+from ansibullbot.triagers.plugins.botstatus import is_bot_status_comment
+from ansibullbot.utils.extractors import remove_markdown_blockquotes
 
 
 def is_needsinfo(triager, issue):
@@ -33,7 +37,7 @@ def is_needsinfo(triager, issue):
             [x for x in maintainers
                 if x != u'DEPRECATED' and
                 x != issue.submitter and
-                x not in triager.BOTNAMES]
+                x not in C.DEFAULT_BOTNAMES]
         )
     )
 
@@ -51,8 +55,8 @@ def is_needsinfo(triager, issue):
         #        event['actor'] not in maintainers:
         #    continue
 
-        # allow anyone to trigger needs_info
-        if event[u'actor'] in triager.BOTNAMES:
+        # allow anyone who is not the bot to trigger needs_info
+        if event[u'actor'] in C.DEFAULT_BOTNAMES:
             continue
 
         if event[u'event'] == u'labeled':
@@ -60,17 +64,27 @@ def is_needsinfo(triager, issue):
                 #print('%s set true' % event['actor'])
                 needs_info = True
                 continue
+
         if event[u'event'] == u'unlabeled':
             if event[u'label'] == u'needs_info':
                 #print('%s set false' % event['actor'])
                 needs_info = False
                 continue
+
         if event[u'event'] == u'commented':
-            if u'!needs_info' in event[u'body']:
+            # Remove replied to lines as we won't take a bot command from there
+            body = remove_markdown_blockquotes(event[u'body'])
+
+            # This event is a bot_status message so it cannot affect the state
+            if is_bot_status_comment(body):
+                continue
+
+            if u'!needs_info' in body:
                 #print('%s set false' % event['actor'])
                 needs_info = False
                 continue
-            elif u'needs_info' in event[u'body']:
+
+            elif u'needs_info' in body:
                 #print('%s set true' % event['actor'])
                 needs_info = True
                 continue

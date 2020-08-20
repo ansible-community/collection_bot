@@ -201,6 +201,7 @@ YAML_FILENAME_EXTENSIONS = ["", ".yml", ".yaml", ".json"]
 # sections in config file
 DEFAULTS = 'defaults'
 
+# We don't want debug in production
 DEFAULT_DEBUG = get_config(
     p,
     DEFAULTS,
@@ -238,6 +239,16 @@ DEFAULT_RATELIMIT = get_config(
     '%s_RATELIMIT' % PROG_NAME.upper(),
     True,
     value_type='boolean'
+)
+
+# GitHub accounts to treat as bots
+DEFAULT_BOTNAMES = get_config(
+    p,
+    DEFAULTS,
+    'botnames',
+    '%s_BOTNAMES' % PROG_NAME.upper(),
+    [u'ansibot', u'ansibotdev', u'ansibullbot'],
+    value_type='list'
 )
 
 DEFAULT_GITHUB_URL = get_config(

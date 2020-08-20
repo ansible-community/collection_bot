@@ -3,7 +3,13 @@
 
 import json
 import sys
+
 from ansibullbot.utils.component_tools import AnsibleComponentMatcher
+from ansibullbot.utils.git_tools import GitRepoWrapper
+
+
+REPO = u'https://github.com/ansible/ansible'
+CACHEDIR = u'/tmp/botmeta_cache',
 
 
 class EmailCache(object):
@@ -24,8 +30,9 @@ def main():
 
     ec = EmailCache()
     cm = AnsibleComponentMatcher(
+        gitrepo=GitRepoWrapper(cachedir=CACHEDIR, repo=REPO),
         botmetafile=None,
-        cachedir='/tmp/botmeta_cache',
+        cachedir=CACHEDIR,
         email_cache=ec
     )
     cm.update()

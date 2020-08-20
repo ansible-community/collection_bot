@@ -3,10 +3,12 @@
 import itertools
 import logging
 from fnmatch import fnmatch
-from ansibullbot.utils.moduletools import ModuleIndexer
-from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_merge_facts
 
 import ansibullbot.constants as C
+from ansibullbot.utils.extractors import remove_markdown_blockquotes
+from ansibullbot.utils.moduletools import ModuleIndexer
+from ansibullbot.triagers.plugins.botstatus import is_bot_status_comment
+from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_merge_facts
 
 
 def is_approval(body):
@@ -109,10 +111,11 @@ def get_automerge_facts(issuewrapper, meta):
         for pr_file in issue.pr_files:
 
             thisfn = pr_file.filename
-            if thisfn.startswith(u'lib/ansible/modules'):
+            # FIXME review this. May not want to give (super)shipit to .github or other special files
+            if thisfn.startswith(u'plugins/'):
                 continue
 
-            elif fnmatch(thisfn, u'test/sanity/*/*.txt'):
+            elif fnmatch(thisfn, u'tests/'):
                 if pr_file.additions or pr_file.status == u'added':
                     # new exception added, addition must be checked by an human
                     return create_ameta(False, u'automerge new file(s) test failed')
@@ -178,7 +181,7 @@ def needs_community_review(meta, issue):
     return True
 
 
-def get_review_facts(issuewrapper, meta):
+def get_review_facts(self, issuewrapper, meta):
     # Thanks @jpeck-resilient for this new module. When this module
     # receives 'shipit' comments from two community members and any
     # 'needs_revision' comments have been resolved, we will mark for
@@ -194,6 +197,7 @@ def get_review_facts(issuewrapper, meta):
         u'committer_review': False,
     }
 
+
     iw = issuewrapper
     if not iw.is_pullrequest():
         return rfacts
@@ -206,7 +210,7 @@ def get_review_facts(issuewrapper, meta):
     if meta[u'is_needs_rebase']:
         return rfacts
 
-    supported_by = get_supported_by(iw, meta)
+    supported_by = get_supported_by(self, iw, meta)
 
     if supported_by == u'community':
         rfacts[u'community_review'] = True
@@ -281,7 +285,7 @@ def get_shipit_facts(issuewrapper, inmeta, module_indexer, core_team=[], botname
     module_utils_files_owned = 0  # module_utils files for which submitter is maintainer
     if meta[u'is_module_util']:
         for f in files:
-            if f.startswith(u'lib/ansible/module_utils') and f in module_indexer.botmeta[u'files']:
+            if f.startswith(u'plugins/module_utils') and f in module_indexer.botmeta[u'files']:
                 maintainers = module_indexer.botmeta[u'files'][f].get(u'maintainers', [])
                 if maintainers and (iw.submitter in maintainers):
                     module_utils_files_owned += 1
@@ -289,7 +293,7 @@ def get_shipit_facts(issuewrapper, inmeta, module_indexer, core_team=[], botname
     modules_files_owned = 0
     if not meta[u'is_new_module']:
         for f in files:
-            if f.startswith(u'lib/ansible/modules') and iw.submitter in meta[u'component_maintainers']:
+            if f.startswith(u'plugins/modules') and iw.submitter in meta[u'component_maintainers']:
                 modules_files_owned += 1
     nmeta[u'owner_pr'] = modules_files_owned + module_utils_files_owned == len(files)
 
@@ -339,7 +343,6 @@ def get_shipit_facts(issuewrapper, inmeta, module_indexer, core_team=[], botname
 
     for event in iw.history.history:
 
-
         if event[u'event'] not in [u'commented', u'committed', u'review_approved', u'review_comment']:
             continue
         if event[u'actor'] in botnames:
@@ -364,6 +367,13 @@ def get_shipit_facts(issuewrapper, inmeta, module_indexer, core_team=[], botname
         actor = event[u'actor']
         body = event.get(u'body', u'')
         body = body.strip()
+
+        # Remove replied to lines as we won't take a bot command from there
+        body = remove_markdown_blockquotes(event[u'body'])
+
+        # A bot status comment cannot affect the state
+        if is_bot_status_comment(body):
+            continue
 
         if not is_approval(body):
             continue
@@ -482,7 +492,7 @@ def get_shipit_facts(issuewrapper, inmeta, module_indexer, core_team=[], botname
     return nmeta
 
 
-def get_supported_by(issuewrapper, meta):
+def get_supported_by(self, issuewrapper, meta):
 
     # http://docs.ansible.com/ansible/modules_support.html
     # certified: maintained by the community and reviewed by Ansible core team.
@@ -500,6 +510,10 @@ def get_supported_by(issuewrapper, meta):
     if meta['is_new_module']:
         supported_by = 'community'
     '''
+
+    # And Collection running the bot is assumed to be community (not core, certified, network, etc)
+    if self.collection:
+        return (u'community')
 
     supported_by = u'core'
     if not meta.get(u'component_support'):

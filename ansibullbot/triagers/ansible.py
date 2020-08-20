@@ -32,6 +32,7 @@ import io
 import json
 import logging
 import os
+import warnings
 
 import pytz
 import requests
@@ -68,6 +69,7 @@ from ansibullbot.triagers.plugins.backports import get_backport_facts
 from ansibullbot.triagers.plugins.botstatus import get_bot_status_facts
 from ansibullbot.triagers.plugins.ci_rebuild import get_ci_facts
 from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_facts
+from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_command_facts
 from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_merge_facts
 from ansibullbot.triagers.plugins.community_workgroups import get_community_workgroup_facts
 from ansibullbot.triagers.plugins.component_matching import get_component_match_facts
@@ -98,12 +100,21 @@ from ansibullbot.parsers.botmetadata import BotMetadataParser
 
 
 REPOS = [
-    u'ansible/ansible',
-    u'ansible/ansible-modules-core',
-    u'ansible/ansible-modules-extras'
+    u'ansible-collections/community.general',
 ]
 
-MREPOS = [x for x in REPOS if u'modules' in x]
+# Collection Repos, where Bot is allowed to run
+CREPOS = [
+    u'ansible-collections/community.general',
+    u'ansible-collections/aws',
+    u'ansible-collections/windows',
+]
+
+repo_data = {'ansible-collections/community.general': {'branch': 'master', 'shippable_prj' : '5e664a167c32620006c9fa50'},
+        }
+
+
+MREPOS = [x for x in REPOS if u'ansible' in x]
 REPOMERGEDATE = datetime.datetime(2016, 12, 6, 0, 0, 0)
 MREPO_CLOSE_WINDOW = 60
 
@@ -120,13 +131,12 @@ class AnsibleActions(DefaultActions):
         super(AnsibleActions, self).__init__()
         self.close_migrated = False
         self.rebuild = False
+        self.rebuild_failed = False
         self.cancel_ci = False
         self.cancel_ci_branch = False
 
 
 class AnsibleTriage(DefaultTriager):
-
-    BOTNAMES = [u'ansibot', u'ansibotdev', u'gregdek', u'robynbergeron']
 
     COMPONENTS = []
 
@@ -179,6 +189,23 @@ class AnsibleTriage(DefaultTriager):
         u'close_me'
     ]
 
+    @property
+    def gws(self):
+        if not self._gws:
+            # create the scraper for www data
+            logging.info(u'creating webscraper')
+            warnings.warn('''
+                        ****
+                        The github webscraper backend is deprecated and probably does not work.
+                        Something went wrong with the graphql backend
+                        ****
+                        ''')
+            self._gws = GithubWebScraper(
+                cachedir=self.cachedir_base,
+                server=C.DEFAULT_GITHUB_URL
+            )
+        return self._gws
+
     def __init__(self, args=None):
 
         super(AnsibleTriage, self).__init__()
@@ -215,8 +242,8 @@ class AnsibleTriage(DefaultTriager):
         self.ghw = GithubWrapper(self.gh, cachedir=self.cachedir_base)
 
         # get valid labels
-        logging.info(u'getting labels')
-        self.valid_labels = self.get_valid_labels(u"ansible/ansible")
+        logging.info(u'getting labels from ' + to_text(self.collection))
+        self.valid_labels = self.get_valid_labels(self.collection)
 
         self._ansible_members = []
         self._ansible_core_team = None
@@ -232,12 +259,11 @@ class AnsibleTriage(DefaultTriager):
         # scraped summaries for all issues
         self.issue_summaries = {}
 
-        # create the scraper for www data
-        logging.info(u'creating webscraper')
-        self.gws = GithubWebScraper(
-            cachedir=self.cachedir_base,
-            server=C.DEFAULT_GITHUB_URL
-        )
+        # This is for the github webscraper.  Will only be used if the graphql backend is
+        # nonfunctional
+        self._gws = None
+
+        # graphql backend
         if C.DEFAULT_GITHUB_TOKEN:
             logging.info(u'creating graphql client')
             self.gqlc = GithubGraphQLClient(
@@ -247,9 +273,9 @@ class AnsibleTriage(DefaultTriager):
         else:
             self.gqlc = None
 
-        # clone ansible/ansible
+        # clone repo
         logging.info(u'creating gitrepowrapper')
-        repo = u'https://github.com/ansible/ansible'
+        repo = u'https://github.com/' + to_text(self.collection)
         gitrepo = GitRepoWrapper(cachedir=self.cachedir_base, repo=repo, commit=self.ansible_commit)
 
         # set the indexers
@@ -307,14 +333,25 @@ class AnsibleTriage(DefaultTriager):
 
     @property
     def ansible_core_team(self):
-        if self._ansible_core_team is None:
-            teams = [
-                u'ansible-commit',
-                u'ansible-community',
-                u'ansible-commit-external'
-            ]
-            self._ansible_core_team = self.get_core_team(u'ansible', teams)
-        return [x for x in self._ansible_core_team if x not in self.BOTNAMES]
+        """ Look up members GitHub Org teams which should have bot powers """
+        if self.collection:
+            if self._ansible_core_team is None:
+                teams = [
+                    u'community-team',
+                    u'elders',
+                    u'proven-maintainers',
+                ]
+                self._ansible_core_team = self.get_core_team(u'ansible-collections', teams)
+        else:
+            if self._ansible_core_team is None:
+                teams = [
+                    u'ansible-commit',
+                    u'ansible-community',
+                    u'ansible-commit-external'
+                ]
+                self._ansible_core_team = self.get_core_team(u'ansible', teams)
+
+        return [x for x in self._ansible_core_team if x not in C.DEFAULT_BOTNAMES]
 
     def get_rate_limit(self):
         return self.gh.get_rate_limit().raw_data
@@ -445,7 +482,7 @@ class AnsibleTriage(DefaultTriager):
 
                             if skip and not mod_repo:
 
-                                # re-check ansible/ansible after
+                                # re-check repo after
                                 # a window of time since the last check.
                                 lt = lmeta[u'time']
                                 lt = strip_time_safely(lt)
@@ -498,15 +535,8 @@ class AnsibleTriage(DefaultTriager):
                         self.build_history(iw)
 
                     actions = AnsibleActions()
-                    if iw.repo_full_name not in MREPOS:
-                        # basic processing for ansible/ansible
-                        self.process(iw)
-                    else:
-                        # module repo processing ...
-                        self.run_module_repo_issue(iw, actions)
-                        # do nothing else on these repos
-                        redo = False
-                        continue
+                    # basic processing for Collection repos
+                    self.process(iw)
 
                     # build up actions from the meta
                     self.create_actions(iw, actions)
@@ -834,7 +864,8 @@ class AnsibleTriage(DefaultTriager):
         if not self.meta[u'is_bad_pr']:
             if iw.is_issue() and self.meta.get(u'needs_component_message'):
                 tvars = {
-                    u'meta': self.meta
+                    u'meta': self.meta,
+                    u'base_url': 'https://github.com/%s/blob/%s/' % (self.collection,repo_data[self.collection][u'branch']),
                 }
                 comment = self.render_boilerplate(
                     tvars, boilerplate=u'components_banner'
@@ -1049,9 +1080,13 @@ class AnsibleTriage(DefaultTriager):
                     actions.unlabel.append(u'needs_ci')
 
         # MODULE CATEGORY LABELS
+        # {u'cloud/amazon': u'aws', u'cloud/azure': u'azure', u'network': u'networking', u'cloud/google': u'gce', u'windows': u'windows', u'cloud/openstack': u'openstack', u'cloud/digital_ocean': u'digital_ocean', u'cloud': u'cloud'}
+        # FIXME This will want testing once we have subdirectories under plugins/modules/
         if not self.meta[u'is_bad_pr']:
-            if self.meta[u'is_new_module'] or self.meta[u'is_module']:
+            # I think we want labels on everything
+            if True: # self.meta[u'is_new_module'] or self.meta[u'is_module']:
                 # add topic labels
+                logging.warning(self.MODULE_NAMESPACE_LABELS)
                 for t in [u'topic', u'subtopic']:
 
                     mmatches = self.meta[u'module_match']
@@ -1076,7 +1111,7 @@ class AnsibleTriage(DefaultTriager):
                                     not iw.history.was_unlabeled(label):
                                 actions.newlabel.append(label)
 
-        # NEW MODULE
+        # MODULE LABELS
         if not self.meta[u'is_bad_pr']:
             if self.meta[u'is_new_module']:
                 if u'new_module' not in iw.labels:
@@ -1088,29 +1123,20 @@ class AnsibleTriage(DefaultTriager):
             if self.meta[u'is_module']:
                 if u'module' not in iw.labels:
                     # don't add manually removed label
-                    if not iw.history.was_unlabeled(
-                        u'module',
-                        bots=self.BOTNAMES
-                    ):
-                        actions.newlabel.append(u'module')
+                    # Why not?
+                    actions.newlabel.append(u'module')
             else:
                 if u'module' in iw.labels:
-                    # don't remove manually added label
-                    if not iw.history.was_labeled(
-                        u'module',
-                        bots=self.BOTNAMES
-                    ):
-                        actions.unlabel.append(u'module')
+                    actions.unlabel.append(u'module')
 
-        # NEW PLUGIN
+        # PLUGIN LABELS
         if not self.meta[u'is_bad_pr']:
-            label = u'new_plugin'
             if self.meta[u'is_new_plugin']:
-                if label not in iw.labels and not iw.history.was_unlabeled(label):
-                    actions.newlabel.append(label)
+                if u'new_plugin' not in iw.labels:
+                    actions.newlabel.append(u'new_plugin')
             else:
-                if label in iw.labels and not iw.history.was_labeled(label):
-                    actions.unlabel.append(label)
+                if u'new_plugin' in iw.labels:
+                    actions.unlabel.append(u'new_plugin')
 
         # component labels
         if not self.meta[u'is_bad_pr']:
@@ -1125,14 +1151,14 @@ class AnsibleTriage(DefaultTriager):
                     # only add these if no c: labels have ever been changed by human
                     clabels = iw.history.get_changed_labels(
                         prefix=u'c:',
-                        bots=self.BOTNAMES
+                        bots=C.DEFAULT_BOTNAMES
                     )
 
                     if not clabels:
                         for cl in self.meta[u'component_labels']:
                             ul = iw.history.was_unlabeled(
                                 cl,
-                                bots=self.BOTNAMES
+                                bots=C.DEFAULT_BOTNAMES
                             )
                             if not ul and \
                                     cl not in iw.labels and \
@@ -1411,24 +1437,6 @@ class AnsibleTriage(DefaultTriager):
                         actions.unlabel.append(u'needs_maintainer')
 
         # https://github.com/ansible/ansibullbot/issues/608
-        if not self.meta[u'is_bad_pr']:
-            if not self.meta.get(u'component_support'):
-                cs_labels = [u'support:core']
-            else:
-                cs_labels = []
-                for sb in self.meta.get(u'component_support'):
-                    if sb is None:
-                        sb = u'core'
-                    cs_label = u'support:%s' % sb
-                    cs_labels.append(cs_label)
-            for cs_label in cs_labels:
-                if cs_label not in iw.labels:
-                    actions.newlabel.append(cs_label)
-            other_cs_labels = [x for x in iw.labels if x.startswith(u'support:')]
-            for ocs_label in other_cs_labels:
-                if ocs_label not in cs_labels:
-                    actions.unlabel.append(ocs_label)
-
         if not self.meta[u'stale_reviews']:
             if u'stale_review' in iw.labels:
                 actions.unlabel.append(u'stale_review')
@@ -1470,6 +1478,12 @@ class AnsibleTriage(DefaultTriager):
         # https://github.com/ansible/ansibullbot/pull/664
         if self.meta[u'needs_rebuild']:
             actions.rebuild = True
+            if u'stale_ci' in actions.newlabel:
+                actions.newlabel.remove(u'stale_ci')
+            if u'stale_ci' in iw.labels:
+                actions.unlabel.append(u'stale_ci')
+        elif self.meta[u'needs_rebuild_failed']:
+            actions.rebuild_failed = True
             if u'stale_ci' in actions.newlabel:
                 actions.newlabel.remove(u'stale_ci')
             if u'stale_ci' in iw.labels:
@@ -1931,7 +1945,6 @@ class AnsibleTriage(DefaultTriager):
 
         # what is this?
         self.meta[u'is_migrated'] = False
-
         # what component(s) is this about?
         self.meta.update(
             get_component_match_facts(
@@ -2002,13 +2015,13 @@ class AnsibleTriage(DefaultTriager):
         self.meta.update(
             get_shipit_facts(
                 iw, self.meta, self.module_indexer,
-                core_team=self.ansible_core_team, botnames=self.BOTNAMES
+                core_team=self.ansible_core_team, botnames=C.DEFAULT_BOTNAMES
             )
         )
-        self.meta.update(get_review_facts(iw, self.meta))
+        self.meta.update(get_review_facts(self, iw, self.meta))
 
         # bot_status needed?
-        self.meta.update(get_bot_status_facts(iw, self.module_indexer, core_team=self.ansible_core_team, bot_names=self.BOTNAMES))
+        self.meta.update(get_bot_status_facts(iw, self.module_indexer, core_team=self.ansible_core_team, bot_names=C.DEFAULT_BOTNAMES))
 
         # who is this waiting on?
         self.meta.update(self.waiting_on(iw, self.meta))
@@ -2053,6 +2066,16 @@ class AnsibleTriage(DefaultTriager):
                 iw,
                 self.meta,
                 self.ansible_core_team,
+            )
+        )
+
+        # ci rebuild requested?
+        self.meta.update(
+            get_rebuild_command_facts(
+                iw,
+                self.meta,
+                self.ansible_core_team,
+                self.SR
             )
         )
 
@@ -2207,13 +2230,13 @@ class AnsibleTriage(DefaultTriager):
             maintainers,
             vcommands,
             uselabels=False,
-            botnames=self.BOTNAMES
+            botnames=C.DEFAULT_BOTNAMES
         )
         meta[u'submitter_commands'] = iw.history.get_commands(
             iw.submitter,
             vcommands,
             uselabels=False,
-            botnames=self.BOTNAMES
+            botnames=C.DEFAULT_BOTNAMES
         )
 
         # JIMI_SKIP!!!
@@ -2403,6 +2426,16 @@ class AnsibleTriage(DefaultTriager):
                 logging.error(
                     u'rebuild: no shippable runid for {}'.format(iw.number)
                 )
+        elif actions.rebuild_failed:
+            runid = self.meta.get(u'ci_run_number')
+            if runid:
+                logging.info('Rebuilding CI %s for #%s' % (runid, iw.number))
+                self.SR.rebuild_failed(runid, issueurl=iw.html_url)
+            else:
+                logging.error(
+                    u'rebuild: no shippable runid for {}'.format(iw.number)
+                )
+
 
         if actions.cancel_ci:
             runid = self.meta.get(u'ci_run_number')
@@ -2427,13 +2460,16 @@ class AnsibleTriage(DefaultTriager):
     def create_parser(cls):
 
         parser = DefaultTriager.create_parser()
-
         parser.description = "Triage issue and pullrequest queues for Ansible.\n" \
                              " (NOTE: only useful if you have commit access to" \
                              " the repo in question.)"
 
+        parser.add_argument("--collection", "-c", type=str, choices=CREPOS,
+                            required=True,
+                            help="GitHub Collection repo to triage")
+
         parser.add_argument("--repo", "-r", type=str, choices=MREPOS,
-                            help="Github repo to triage (defaults to all)")
+                            help="GitHub repo to triage (defaults to all)")
 
         parser.add_argument("--skip_no_update", action="store_true",
                             help="skip processing if updated_at hasn't changed")

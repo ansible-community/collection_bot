@@ -377,5 +377,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     client = GithubGraphQLClient(C.DEFAULT_GITHUB_TOKEN)
     summaries = client.get_all_summaries(u'ansible', u'ansible')
-    ln = client.get_last_number(u'ansible/ansible')
+    ln = client.get_last_number(u'ansible-collections/community.general')
     #import epdb; epdb.st()

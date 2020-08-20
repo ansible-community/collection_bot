@@ -22,7 +22,7 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
         u'is_new_plugin': False,
         u'is_core': False,
         u'is_multi_module': False,
-        u'module_match': None,
+        u'module_match': [],
         u'component': None,
         u'component_name': [],
         u'component_match_strategy': None,
@@ -68,7 +68,7 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
         if _CM_MATCHES != CM_MATCHES:
             cmeta[u'component_match_strategy'] = [u'component_command']
 
-    # sort so that the filenames show up in the alphabetical/consisten order
+    # sort so that the filenames show up in the alphabetical/consistent order
     CM_MATCHES = sorted(CM_MATCHES, key=lambda k: k[u'repo_filename'])
 
     cmeta[u'component_matches'] = CM_MATCHES[:]
@@ -112,23 +112,25 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
                 cmeta[u'component_notifiers'].remove(y)
 
     # is it a module ... or two?
-    if [x for x in CM_MATCHES if u'lib/ansible/modules' in x[u'repo_filename']]:
+    if [x for x in CM_MATCHES if u'plugins/modules' in x[u'repo_filename']]:
         cmeta[u'is_module'] = True
-        if len([x for x in CM_MATCHES if u'lib/ansible/modules' in x[u'repo_filename']]) > 1:
+        if len([x for x in CM_MATCHES if u'plugins/modules' in x[u'repo_filename']]) > 1:
             cmeta[u'is_multi_module'] = True
         cmeta[u'is_plugin'] = True
-        cmeta[u'module_match'] = [x for x in CM_MATCHES if u'lib/ansible/modules' in x[u'repo_filename']]
+        cmeta[u'module_match'] = [x for x in CM_MATCHES if u'plugins/modules' in x[u'repo_filename']]
 
     # is it a plugin?
-    if [x for x in CM_MATCHES if u'lib/ansible/plugins' in x[u'repo_filename']]:
+    # In the world of Collections almost everything is a plugin
+    # Does this matter to Bot workflow?
+    if [x for x in CM_MATCHES if u'plugins' in x[u'repo_filename']]:
         cmeta[u'is_plugin'] = True
 
-    # is it a plugin?
-    if [x for x in CM_MATCHES if u'lib/ansible/plugins/action' in x[u'repo_filename']]:
+    # is it an action plugin?
+    if [x for x in CM_MATCHES if u'plugins/action' in x[u'repo_filename']]:
         cmeta[u'is_action_plugin'] = True
 
     # is it a module util?
-    if [x for x in CM_MATCHES if u'lib/ansible/module_utils' in x[u'repo_filename']]:
+    if [x for x in CM_MATCHES if u'plugins/module_utils' in x[u'repo_filename']]:
         cmeta[u'is_module_util'] = True
 
     if iw.is_pullrequest():
@@ -139,7 +141,7 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
         # https://github.com/ansible/ansibullbot/issues/684
         if iw.new_files:
             for x in iw.new_files:
-                if u'/plugins/' in x:
+                if u'plugins/' in x:
                     cmeta[u'is_new_plugin'] = True
 
     # welcome message to indicate which files the bot matched
@@ -150,7 +152,7 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
 
         else:
 
-            bpcs = iw.history.get_boilerplate_comments(dates=True, content=True, botnames=[u'ansibot', u'ansibotdev'])
+            bpcs = iw.history.get_boilerplate_comments(dates=True, content=True )
             bpcs = [x for x in bpcs if x[1] == u'components_banner']
 
             if bpcs:
@@ -170,7 +172,6 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
                 expected = sorted(set([x[u'repo_filename'] for x in CM_MATCHES]))
                 if _filenames != expected:
                     cmeta[u'needs_component_message'] = True
-
     return cmeta
 
 

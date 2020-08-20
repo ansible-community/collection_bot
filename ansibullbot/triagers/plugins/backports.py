@@ -13,8 +13,8 @@ def get_backport_facts(issuewrapper, meta):
     if not iw.is_pullrequest():
         return bfacts
 
-    if iw.pullrequest.base.ref != u'devel':
-        bfacts[u'is_backport'] = True
-        bfacts[u'base_ref'] = iw.pullrequest.base.ref
+    #if iw.pullrequest.base.ref != u'devel':
+    #    bfacts[u'is_backport'] = True
+    #    bfacts[u'base_ref'] = iw.pullrequest.base.ref
 
     return bfacts
