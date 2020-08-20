@@ -1,0 +1,8 @@
+- name: Update Ansibullbot
+  hosts: ansibullbot
+  become: yes
+
+  roles:
+    - docker
+    - role: ansibullbot
+      ansibullbot_action: update
