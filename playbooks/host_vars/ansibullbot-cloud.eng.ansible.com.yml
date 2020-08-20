@@ -1,0 +1,58 @@
+---
+# Settings for EC2 instance
+botinstance_name: ansibullbot-cloud
+botinstance_region: us-west-1
+botinstance_volume_size: 200
+botinstance_type: t3.xlarge
+botinstance_ssh_keys:
+  - name: jillr
+    key_material: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDUaBo3D4s0LSpS+vV/l1RpWDQW8s4Yg6S3ql7+99zUzfMuFopFI6hbmJjEgmx3N02RJi87jHE41/dqHTxmY42KGc6dBP8T7M//rINhEq2AiEuVky8Xx4WfosIq9KF1ffUoIo30y8ld/mv+Cj+8PlSTLb4t+Td64f6T/+S092KfxVDEcmfTXG3ECV3YKPPNp8xQRznPt0hOKYGKHzf9LT8m4lyN2V7vht+SoABHx/tM1mwO/3DeFhKwY0IBiM44fGIlYrlSNuMLo8X35n7OvF7Wk2vqJEW0GgPSGK3EI+1ZBGPGYi2n5/DVTQQaNJ+6hhSuIs9tJbf3HIDzrnSHHJ9z
+
+  - name: tkuratomi
+    key_material: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAEAQDfgKJEBuHFlFc8/IHDeIpdprNnAFQHkicXAFfAzIJSkhUaOJFjsulmgPZn2TJJpYqFAxYUjhWJOdrOwx7AHSg6gWu4TT4a0sTay+Z0eqZOShf5UL/M587DxJk1JZU8g812yDKZMc7Sv7K6zdteONnCvno1kALSg0F2MVMJXFjE/tSontkIRH6IuG19R19NGEj1h56uGwdfe78xjOmv5wk6RZBjaOKqiPSQKNqCKbY9Kyz6yrem2M5uxRK45u3wSPJdmopo8l/nwf0p6ydrUSL5C/aXGh7LPqh31eTBDQUbWHw9LQMk1SibMGQPwJt59lLMlzc5OQZAJEbadsDAgl6VVA6MZkBQROiK9E087kvPesMoGWE0KBgvTqzpBZj0uHATP9i097dv80gjupMyaePsnQOxk0wRho9nRkxRo18Drt3QPVND4YGHzahMe/YR2N83MkbnGoP8K+GsFhLMAp3NKh6yUofFxTgRiB6H8ULKf3CV+hlk0Z9RJR3CpgMTKILYHPlaleJqoP6sXg6tJxI0rUE+0jUKvaTj+N2gX0MjKfUINk5mTbjD2mdVrPtKOBvos2luNhY5nTDpJuAHQqnFHPlPw8l3lXC2VBWOjqfTeeS+qD7ArKe6F7IO5ZNxJ2mTUuodhaPySta1MS37DWoz6UqeJu+wKIsHok90+EU4aAvUABh3RXSQA1E3IaxkooMhhrdIQO6K4L0M+CZ7lP35sW5pnwsN4sFlPec9Xn5e15LTlb9yFlx7Nm4DE2SX1s9QyMRE7z0LNO0X7wiihojuyQM6OQwc+ZaaDw5HerBisX/3LcC9osVLQQg1pt91YcCczUQ08qfUJV6aOD962K+EGzVFQGGauJDzgEH9BHQg7QwCWr0f3mu8/TNBzys2c0YsywDUc3AT1KP6TEJcR/dy6WbhJD3qyO/BLfCzRrHUOIaz+WbwmfTX8tGEQnVV5sEkZ39PWA1hRQ83b3MNV8cRJl+h/FnTk62yM4ZqGu73+x8JiEG3HAJp9/xYfNSwg8++PojJBXe+yM6DrTh5fTnBhxatLEKB658p8jTqJtF4+YD9D8+L39xEns6GQ7FphNqTC6IcpXyqq+zNuzF7vs/T+5n7978dUs3sK6YpBX4BlDxK6MsRF1WYqajEVeBJEMwdX2rfGkN9B5GfWdmdrzBjZQ6yyvlx5Dg++qgxpMiVOXSnw5v7H03PrT1we9wKre/2SQ1A2Oq/UDt/7tR2cMLoaPDNBpFT1W44LJB7o9iDT9YHUG3dC7R8JoeJ5YjyFmxbUQ5xg1oHnrBaPrGCuEYdQWhuDmp9Px2yRu8Agxzr9rNCZ/W8nWJVmvwvlXoldrum2rAECx0wiWqBhQ/+eX65'
+
+  - name: sdoran@aws_work
+    key_material: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCfJ88NuTDKSpYq+wrDCd+AKg2l1jqg0qgXxjiNXwaEUOUllb5II0uin7xh/6jl9hLRbwVOe/CjD+tjbb7IAuno6B/Nx4CqybArYv7w+GHH0fSrpLpojGzuO9IJ/p1Rxw7vum5INAQ9tPHScF2CwoANsYpmU1sgC+lzd3frobTOsQ9Gj/jEh6I2Ugvm3N0Xjd4IA2788zsmOD/viHQt47AVOqFGhkyt/QlFdxw2MqUevkQiEmIv46aZkSLMtcsoLa/q63tCVaEl8vRRWhUVei8fvs5mVcPuJzq8jV92mtU+JUzh+SRpKynUsQKME4OB3OgUpTtpZvAJONWY4NS8P9t5
+
+  - name: mkrizek@x240
+    key_material: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCdIcSGGFCk4VLylSLCKHYoLK1vOEU9ebxJn5dtBY1MRAdEL7dDWzwfoovXzxkHWXOWYDWL2ayZJHUmFfN9JVAg20FYNitU+PZlZs/H8xuWNjL4SbgOq6oBbZAHQnQ5EO0N2rfOMJXC5XEqAEDZVfOvJJt9qcPoBizMFIiTRT/yU47QFo7z3SGCbuMOEE9wZU+VFX8KKwHp1jP37dvLNBh/bdUwvo6RTpk7aUN8zv3BvAjUeT/hC6bbqMw4ibvWp/HbzKHFPBWp5mimIr/j2AbFLnY+c9T2/MJ1FeJIDeNC+uNR/J12XD2WQyUp4QowCsZMCKEkhNDVtm05yM5n+OV9
+
+botinstance_dns_entries:
+  - type: CNAME
+    record: ansibot-cloud.eng.ansible.com
+    value: ansibullbot-cloud.eng.ansible.com
+
+  - type: CNAME
+    record: ansiblebot-cloud.eng.ansible.com
+    value: ansibullbot-cloud.eng.ansible.com
+
+  - type: A
+    command: create
+    record: ansibullbot-cloud.eng.ansible.com
+    value: "{{ _elastic_ip.public_ip }}"
+
+ansibullbot_fqdn: ansibullbot-cloud.eng.ansible.com
+ansibullbot_sentry_server_name: TODO
+
+ansibullbot_repos:
+  - ansible-collections/amazon.aws
+  - ansible-collections/community.aws
+  - ansible-collections/vmware
+ansibullbot_collections: ansible-collections/amazon.aws, ansible-collections/community.aws, ansible-collections/vmware
+
+ansibullbot_options:
+  - daemonize
+  - daemonize_interval={{ ansibullbot_daemonize_interval }}
+  - debug
+  - force
+  - logfile {{ ansibullbot_log_path }}
+  - resume
+  - skip_no_update
+  - skip_no_update_timeout
+  - verbose
+  {% for collection in ansibullbot_collections %}
+  - collection "{{ collection }}"
+  {% endfor %}
+  {% for collection in ansibullbot_repos %}
+  - repo "{{ repo }}"
+  {% endfor %}

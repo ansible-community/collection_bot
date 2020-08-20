@@ -99,16 +99,7 @@ from ansibullbot.triagers.plugins.deprecation import get_deprecation_facts
 from ansibullbot.parsers.botmetadata import BotMetadataParser
 
 
-REPOS = [
-    u'ansible-collections/community.general',
-]
-
-# Collection Repos, where Bot is allowed to run
-CREPOS = [
-    u'ansible-collections/community.general',
-    u'ansible-collections/aws',
-    u'ansible-collections/windows',
-]
+REPOS = C.DEFAULT_REPOS
 
 MREPOS = [x for x in REPOS if u'ansible' in x]
 REPOMERGEDATE = datetime.datetime(2016, 12, 6, 0, 0, 0)
@@ -237,10 +228,7 @@ class AnsibleTriage(DefaultTriager):
         logging.info('creating api wrapper')
         self.ghw = GithubWrapper(self.gh, cachedir=self.cachedir_base)
 
-        # get valid labels
-        logging.info(u'getting labels from ' + to_text(self.collection))
-        self.valid_labels = self.get_valid_labels(self.collection)
-
+        self.valid_labels = None
         self._ansible_members = []
         self._ansible_core_team = None
         self._botmeta_content = None
@@ -251,6 +239,7 @@ class AnsibleTriage(DefaultTriager):
 
         # repo objects
         self.repos = {}
+        self._repo = None
 
         # scraped summaries for all issues
         self.issue_summaries = {}
@@ -269,9 +258,14 @@ class AnsibleTriage(DefaultTriager):
         else:
             self.gqlc = None
 
+    def setup_repo(self):
+        # get valid labels
+        logging.info(u'getting labels from ' + to_text(self._repo))
+        self.valid_labels = self.get_valid_labels(self._repo)
+
         # clone repo
         logging.info(u'creating gitrepowrapper')
-        repo = u'https://github.com/' + to_text(self.collection)
+        repo = u'https://github.com/' + to_text(self._repo)
         gitrepo = GitRepoWrapper(cachedir=self.cachedir_base, repo=repo, commit=self.ansible_commit)
 
         # set the indexers
@@ -330,7 +324,7 @@ class AnsibleTriage(DefaultTriager):
     @property
     def ansible_core_team(self):
         """ Look up members GitHub Org teams which should have bot powers """
-        if self.collection:
+        if self._repo:
             if self._ansible_core_team is None:
                 teams = [
                     u'community-team',
@@ -353,6 +347,13 @@ class AnsibleTriage(DefaultTriager):
         return self.gh.get_rate_limit().raw_data
 
     def run(self):
+        # We support running a single bot for multiple repos/collections, so iterate on each run
+        for repo in self.repo:
+            self._repo = repo
+            self.setup_repo()
+            self.run_triage()
+
+    def run_triage(self):
         '''Primary execution method'''
 
         if self.ITERATION > 0:
@@ -1732,7 +1733,7 @@ class AnsibleTriage(DefaultTriager):
 
         for repo in REPOS:
             # skip repos based on args
-            if self.repo and self.repo != repo:
+            if self._repo and self._repo != repo:
                 continue
             if self.skiprepo:
                 if repo in self.skiprepo:
@@ -2463,12 +2464,8 @@ class AnsibleTriage(DefaultTriager):
                              " (NOTE: only useful if you have commit access to" \
                              " the repo in question.)"
 
-        parser.add_argument("--collection", "-c", type=str, choices=CREPOS,
-                            required=True,
-                            help="GitHub Collection repo to triage")
-
-        parser.add_argument("--repo", "-r", type=str, choices=MREPOS,
-                            help="GitHub repo to triage (defaults to all)")
+        parser.add_argument("--repo", "-r", action='append',
+                            help="GitHub repo(s) to triage (defaults to ansible-collections/community.general)")
 
         parser.add_argument("--skip_no_update", action="store_true",
                             help="skip processing if updated_at hasn't changed")
