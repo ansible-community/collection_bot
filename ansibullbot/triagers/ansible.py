@@ -235,8 +235,6 @@ class AnsibleTriage(DefaultTriager):
         self.botmeta = {}
         self.automerge_on = False
 
-        self.cachedir_base = os.path.expanduser(self.cachedir_base)
-
         # repo objects
         self.repos = {}
         self._repo = None
@@ -297,11 +295,11 @@ class AnsibleTriage(DefaultTriager):
             email_cache=self.module_indexer.emails_cache,
         )
 
-        # instantiate shippable api
-        logging.info('creating shippable wrapper')
-        spath = os.path.join(self.cachedir_base, 'shippable.runs')
-        self.SR = ShippableRuns(cachedir=spath, writecache=True)
-        self.SR.update()
+        # # instantiate shippable api
+        # logging.info('creating shippable wrapper')
+        # spath = os.path.join(self.cachedir_base, 'shippable.runs')
+        # self.SR = ShippableRuns(cachedir=spath, writecache=True)
+        # self.SR.update()
 
         # issue migrator
         logging.info('creating the issue migrator')
@@ -350,6 +348,26 @@ class AnsibleTriage(DefaultTriager):
         # We support running a single bot for multiple repos/collections, so iterate on each run
         for repo in self.repo:
             self._repo = repo
+            # where to store junk
+            self.cachedir_collection = os.path.expanduser(self.cachedir_base+self._repo)
+
+            # instantiate shippable api
+            logging.info('creating shippable wrapper')
+            spath = os.path.join(self.cachedir_collection, 'shippable.runs')
+            shippable_prj_id = repo_data[self._repo]['shippable_prj']
+            shippable_url = u'%s/runs?projectIds=%s&isPullRequest=True' % (
+                C.DEFAULT_SHIPPABLE_URL,
+                shippable_prj_id
+            )
+            self.SR = ShippableRuns(url=shippable_url,
+                                    project_id=shippable_prj_id,
+                                    cachedir=spath,
+                                    writecache=True)
+            self.SR.update()
+
+            # wrap the connection
+            logging.info('creating api wrapper')
+            self.ghw = GithubWrapper(self.gh, cachedir=self.cachedir_collection)
             self.setup_repo()
             self.run_triage()
 

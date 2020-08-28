@@ -111,7 +111,7 @@ class DefaultTriager(object):
         """
         parser = argparse.ArgumentParser()
         parser.add_argument("--cachedir", type=str, dest='cachedir_base',
-                            default='~/.ansibullbot/cache')
+                            default='~/.ansibullbot/cache/')
         parser.add_argument("--logfile", type=str,
                             default='/var/log/ansibullbot.log',
                             help="Send logging to this file")

@@ -21,15 +21,15 @@ import six
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed, RetryError, TryAgain
 
-# FIXME: Need to get all of the Shippable Project IDs for the various collections and define them here
-# 5e664a167c32620006c9fa50 community.general
-#ANSIBLE_PROJECT_ID = u'573f79d02a8192902e20e34b'
-ANSIBLE_PROJECT_ID = u'5e664a167c32620006c9fa50' # community.general
-SHIPPABLE_URL = C.DEFAULT_SHIPPABLE_URL
-ANSIBLE_RUNS_URL = u'%s/runs?projectIds=%s&isPullRequest=True' % (
-    SHIPPABLE_URL,
-    ANSIBLE_PROJECT_ID
-)
+# # FIXME: Need to get all of the Shippable Project IDs for the various collections and define them here
+# # 5e664a167c32620006c9fa50 community.general
+# #ANSIBLE_PROJECT_ID = u'573f79d02a8192902e20e34b'
+# ANSIBLE_PROJECT_ID = u'5e664a167c32620006c9fa50' # community.general
+# SHIPPABLE_URL = C.DEFAULT_SHIPPABLE_URL
+# ANSIBLE_RUNS_URL = u'%s/runs?projectIds=%s&isPullRequest=True' % (
+#     SHIPPABLE_URL,
+#     ANSIBLE_PROJECT_ID
+# )
 
 TIMEOUT = 5  # seconds
 
@@ -57,7 +57,7 @@ class ShippableNoData(Exception):
 class ShippableRuns(object):
     '''An abstraction for the shippable API'''
 
-    def __init__(self, url=ANSIBLE_RUNS_URL, cachedir=None, cache=False,
+    def __init__(self, url=None, project_id=None, cachedir=None, cache=False,
                  writecache=True):
 
         self.writecache = writecache
@@ -66,6 +66,7 @@ class ShippableRuns(object):
         else:
             self.cachedir = u'/tmp/shippable.cache'
         self.url = url
+        self.project_id = project_id
         if cache:
             requests_cache.install_cache(self.cachedir)
 
@@ -152,7 +153,7 @@ class ShippableRuns(object):
         if not os.path.isdir(cdir):
             os.makedirs(cdir)
         #cfile = url.replace(u'https://api.shippable.com/', u'')
-        cfile = url.replace(SHIPPABLE_URL + '/', u'')
+        cfile = url.replace(self.url + '/', u'')
         cfile = cfile.replace(u'/', u'_')
         cfile = os.path.join(cdir, cfile + u'.json')
         gzfile = cfile + u'.gz'
@@ -209,7 +210,7 @@ class ShippableRuns(object):
         if len(run_id) == 24:
             # https://api.shippable.com/runs/58caf30337380a0800e31219
             #run_url = u'https://api.shippable.com/runs/' + run_id
-            run_url = SHIPPABLE_URL + '/runs/' + run_id
+            run_url = self.url + '/runs/' + run_id
             logging.info(u'shippable: %s' % run_url)
             run_data = self._get_url(run_url, usecache=usecache)
         else:
@@ -228,9 +229,9 @@ class ShippableRuns(object):
 
             # https://github.com/ansible/ansibullbot/issues/982
             #run_url = u'https://api.shippable.com/runs'
-            run_url = SHIPPABLE_URL + '/runs'
+            run_url = self.url + '/runs'
             run_url += u'?'
-            run_url += u'projectIds=%s' % ANSIBLE_PROJECT_ID
+            run_url += u'projectIds=%s' % self.project_id
             run_url += u'&'
             run_url += u'runNumbers=%s' % run_id
 
@@ -247,7 +248,7 @@ class ShippableRuns(object):
 
     def get_all_run_metadata(self, usecache=True):
         #url = u'https://api.shippable.com/runs'
-        url = SHIPPABLE_URL + '/runs'
+        url = self.url + '/runs'
         run_data = self._get_url(url, usecache=usecache)
         return run_data
 
@@ -303,7 +304,7 @@ class ShippableRuns(object):
 
         results = []
         #url = u'https://api.shippable.com/jobs?runIds=%s' % run_id
-        url = SHIPPABLE_URL + '/jobs?runIds=%s' % run_id
+        url = url + '/jobs?runIds=%s' % run_id
         rdata = self._get_url(url, usecache=usecache)
 
         for rix, rd in enumerate(rdata):
@@ -322,7 +323,7 @@ class ShippableRuns(object):
             CVMAP[dkey][u'statusCode'] = rd[u'statusCode']
 
             #jurl = u'https://api.shippable.com/jobs/%s/jobTestReports' % job_id
-            jurl = SHIPPABLE_URL + '/jobs/%s/jobTestReports' % job_id
+            jurl = url + '/jobs/%s/jobTestReports' % job_id
             jdata = self._get_url(jurl, usecache=usecache)
 
             # 400 return codes ...
@@ -408,7 +409,7 @@ class ShippableRuns(object):
         if rerunFailedOnly:
             data[u'rerunFailedOnly'] = True
 
-        newbuild_url = u"%s/projects/%s/newBuild" % (SHIPPABLE_URL, ANSIBLE_PROJECT_ID)
+        newbuild_url = u"%s/projects/%s/newBuild" % (self.url, self.project_id)
         response = self.fetch(newbuild_url, verb='post', data=data, timeout=TIMEOUT)
         if not response:
             raise Exception("Unable to POST %r to %r (%r)" % (data, newbuild_url, issueurl))
@@ -426,7 +427,7 @@ class ShippableRuns(object):
         run_id = self.get_run_id(run_number)
         data = {u'runId': run_id}
 
-        cancel_url = u"%s/runs/%s/cancel" % (SHIPPABLE_URL, run_id)
+        cancel_url = u"%s/runs/%s/cancel" % (self.url, run_id)
         response = self.fetch(cancel_url, verb='post', data=data, timeout=TIMEOUT)
         if not response:
             raise Exception("Unable to POST %r to %r (%r)" % (data, cancel_url, issueurl))
@@ -438,9 +439,9 @@ class ShippableRuns(object):
         #run_url = u'https://api.shippable.com/runs?projectIds=%s&branch=%s&' \
         #          u'status=waiting,queued,processing,started' \
         #          % (ANSIBLE_PROJECT_ID, branch)
-        run_url = SHIPPABLE_URL + '/runs?projectIds=%s&branch=%s&' \
+        run_url = self.url + '/runs?projectIds=%s&branch=%s&' \
                   u'status=waiting,queued,processing,started' \
-                  % (ANSIBLE_PROJECT_ID, branch)
+                  % (self.project_id, branch)
 
         logging.info(u'shippable: %s' % run_url)
         try:
