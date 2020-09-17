@@ -524,6 +524,11 @@ class DefaultWrapper(object):
         """Returns the submitter"""
         return self.instance.user.login
 
+    #@property
+    def is_bot(self):
+        """Returns True is user is a GitHub Bot account"""
+        return self.instance.user.type == "Bot"
+
     @RateLimited
     def get_labels(self):
         """Pull the list of labels on this Issue"""

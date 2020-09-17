@@ -851,7 +851,10 @@ class AnsibleTriage(DefaultTriager):
                 actions.cancel_ci_branch = True
                 return
 
-            if not iw.from_fork:
+            # To avoid the repo being poluted with lots of branches which end users end up cloning
+            # close any PRs that aren't from forks
+            # Exception is for Bots, which is how we generate backport PRs
+            if not iw.from_fork and not iw.is_bot():
                 tvars = {u'submitter': iw.submitter}
                 comment = self.render_boilerplate(tvars, boilerplate=u'fork')
                 actions.comments.append(comment)
