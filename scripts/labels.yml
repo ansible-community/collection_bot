@@ -21,7 +21,7 @@
 - {color: 71bc1c, description: 'terminal plugin', name: terminal}
 - {color: 71bc1c, description: 'tests', name: tests}
 - {color: 71bc1c, description: 'tests/integration', name: integration}
-- {color: 71bc1c, description: 'tests/units', name: units}
+- {color: 71bc1c, description: 'tests/unit', name: units}
 - {color: 71bc1c, description: 'vars plugin', name: vars}
 - {color: 73d15c, description: 'Good for new comers and easy to start with contribution', name: easyfix}
 - {color: 8aea94, description: 'Help guide this first time contributor', name: new_contributor}
