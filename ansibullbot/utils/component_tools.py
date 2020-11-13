@@ -221,8 +221,7 @@ class AnsibleComponentMatcher(object):
                     u'maintainers_keys': [],
                     u'notified': ME.authors,
                     u'ignored': [],
-                    u'support': ME.metadata.get(u'supported_by', u'community'),
-                    u'metadata': ME.metadata.copy()
+                    u'support': u'community',
                 }
             else:
                 bmeta = self.BOTMETA[u'files'][k].copy()
@@ -232,7 +231,7 @@ class AnsibleComponentMatcher(object):
                 if u'maintainers' not in bmeta:
                     bmeta[u'maintainers'] = []
                 if not bmeta.get(u'supported_by'):
-                    bmeta[u'supported_by'] = ME.metadata.get(u'supported_by', u'community')
+                    bmeta[u'supported_by'] = u'community'
                 if u'authors' not in bmeta:
                     bmeta[u'authors'] = []
                 for x in ME.authors:
@@ -1047,14 +1046,10 @@ class AnsibleComponentMatcher(object):
         if u'plugins/modules' in filename:
             mmatch = self.find_module_match(filename)
             if mmatch and len(mmatch) == 1 and mmatch[0][u'filename'] == filename:
-                meta[u'metadata'].update(mmatch[0][u'metadata'])
                 for k in u'authors', u'maintainers':
                     meta[k] += mmatch[0][k]
                 meta[u'notify'] += mmatch[0][u'notified']
 
-            if meta[u'metadata']:
-                if meta[u'metadata'][u'supported_by']:
-                    meta[u'support'] = meta[u'metadata'][u'supported_by']
 
         # reconcile the delta between a child and it's parents
         support_levels = {}
@@ -1189,7 +1184,7 @@ class AnsibleComponentMatcher(object):
 
         # fallback to core support
         if not meta[u'support']:
-            meta[u'support'] = u'core'
+            meta[u'support'] = u'community'
 
         # align support and supported_by
         if meta[u'support'] != meta[u'supported_by']:
