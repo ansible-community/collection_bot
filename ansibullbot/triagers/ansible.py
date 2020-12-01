@@ -34,7 +34,10 @@ import logging
 import os
 import warnings
 
-import pytz
+from copy import deepcopy
+from distutils.version import LooseVersion
+from pprint import pprint
+
 import requests
 
 from ansibullbot._json_compat import json_dump
@@ -63,7 +66,7 @@ from ansibullbot.utils.webscraper import GithubWebScraper
 from ansibullbot.utils.gh_gql_client import GithubGraphQLClient
 
 from ansibullbot.decorators.github import RateLimited
-from ansibullbot.errors import LabelWafflingError
+from ansibullbot.errors import LabelWafflingError, NoCIError
 
 from ansibullbot.triagers.plugins.backports import get_backport_facts
 from ansibullbot.triagers.plugins.botstatus import get_bot_status_facts
@@ -82,7 +85,7 @@ from ansibullbot.triagers.plugins.needs_info import is_needsinfo
 from ansibullbot.triagers.plugins.needs_info import needs_info_template_facts
 from ansibullbot.triagers.plugins.needs_info import needs_info_timeout_facts
 from ansibullbot.triagers.plugins.needs_revision import get_needs_revision_facts
-from ansibullbot.triagers.plugins.needs_revision import get_shippable_run_facts
+from ansibullbot.triagers.plugins.needs_revision import get_ci_run_facts
 from ansibullbot.triagers.plugins.contributors import get_contributor_facts
 from ansibullbot.triagers.plugins.notifications import get_notification_facts
 from ansibullbot.triagers.plugins.performance import get_performance_facts
@@ -96,7 +99,8 @@ from ansibullbot.triagers.plugins.small_patch import get_small_patch_facts
 from ansibullbot.triagers.plugins.traceback import get_traceback_facts
 from ansibullbot.triagers.plugins.deprecation import get_deprecation_facts
 
-from ansibullbot.parsers.botmetadata import BotMetadataParser
+
+VALID_CI_PROVIDERS = frozenset((u'shippable', u'azp'))
 
 
 REPOS = [
@@ -216,7 +220,20 @@ class AnsibleTriage(DefaultTriager):
             val = getattr(args, x)
             setattr(self, x, val)
 
-        self.last_run = None
+        ci_provider = self.ci
+
+        if ci_provider == u'shippable':
+            from ansibullbot.utils.shippable_api import ShippableCI as ci_class
+        elif ci_provider == u'azp':
+            from ansibullbot.ci.azp import AzurePipelinesCI as ci_class
+        else:
+            raise ValueError(
+                u'Unknown CI provider specified in the config file: %s. Valid CI providers: %s' %
+                (C.DEFAULT_CI_PROVIDER, ', '.join(VALID_CI_PROVIDERS))
+            )
+
+        self.ci = None
+        self.ci_class = ci_class
 
         self.github_url = C.DEFAULT_GITHUB_URL
         self.github_user = C.DEFAULT_GITHUB_USERNAME
@@ -302,12 +319,6 @@ class AnsibleTriage(DefaultTriager):
             botmetafile=self.botmetafile,
             email_cache=self.module_indexer.emails_cache,
         )
-
-        # instantiate shippable api
-        logging.info('creating shippable wrapper')
-        spath = os.path.join(self.cachedir_base, 'shippable.runs')
-        self.SR = ShippableRuns(cachedir=spath, writecache=True)
-        self.SR.update()
 
         # issue migrator
         logging.info('creating the issue migrator')
@@ -434,6 +445,9 @@ class AnsibleTriage(DefaultTriager):
                 # keep track of how many times this isssue has been re-done
                 loopcount = 0
 
+                # time each issue
+                its1 = datetime.datetime.now()
+
                 while redo:
 
                     # use the loopcount to check new data
@@ -458,6 +472,12 @@ class AnsibleTriage(DefaultTriager):
                         file_indexer=self.file_indexer
                     )
 
+                    if iw.is_pullrequest():
+                        logging.info('creating CI wrapper')
+                        self.ci = self.ci_class(self.cachedir_base, iw)
+                    else:
+                        self.ci = None
+
                     if self.skip_no_update:
                         lmeta = self.load_meta(iw)
 
@@ -470,13 +490,13 @@ class AnsibleTriage(DefaultTriager):
                             if lmeta[u'updated_at'] == to_text(iw.updated_at.isoformat()):
                                 skip = True
 
-                            if skip and not mod_repo:
+                            if skip:
                                 if iw.is_pullrequest():
                                     ua = to_text(iw.pullrequest.updated_at.isoformat())
                                     if lmeta[u'updated_at'] < ua:
                                         skip = False
 
-                            if skip and not mod_repo:
+                            if skip:
 
                                 # re-check repo after
                                 # a window of time since the last check.
@@ -490,20 +510,18 @@ class AnsibleTriage(DefaultTriager):
                                     logging.info(msg)
                                     skip = False
 
-                                # if last process time is older than
-                                # last completion time on shippable, we need
-                                # to reprocess because the ci status has
-                                # probabaly changed.
-                                if skip and iw.is_pullrequest():
-                                    ua = to_text(iw.pullrequest.updated_at.isoformat())
-                                    mua = strip_time_safely(lmeta[u'updated_at'])
-                                    lsr = self.SR.get_last_completion(iw.number)
-                                    if (lsr and lsr > mua) or \
-                                            ua > lmeta[u'updated_at']:
+                            if skip:
+                                if iw.is_pullrequest():
+                                    # if last process time is older than
+                                    # last completion time on CI, we need
+                                    # to reprocess because the CI status has
+                                    # probabaly changed.
+                                    if self.ci.updated_at and \
+                                            self.ci.updated_at > strip_time_safely(lmeta[u'updated_at']):
                                         skip = False
 
                             # was this in the stale list?
-                            if skip and not mod_repo:
+                            if skip:
                                 if iw.number in self.repos[repopath][u'stale']:
                                     skip = False
 
@@ -512,7 +530,7 @@ class AnsibleTriage(DefaultTriager):
                                 skip = False
 
                             # do a final check on the timestamp in meta
-                            if skip and not mod_repo:
+                            if skip:
                                 mts = strip_time_safely(lmeta[u'time'])
                                 delta = (now - mts).days
                                 if delta > C.DEFAULT_STALE_WINDOW:
@@ -523,12 +541,10 @@ class AnsibleTriage(DefaultTriager):
                                 logging.info(msg)
                                 continue
 
-                    # pre-processing for non-module repos
-                    if iw.repo_full_name not in MREPOS:
-                        # force an update on the PR data
-                        iw.update_pullrequest()
-                        # build the history
-                        self.build_history(iw)
+                    # force an update on the PR data
+                    iw.update_pullrequest()
+                    # build the history
+                    self.build_history(iw)
 
                     actions = AnsibleActions()
                     # basic processing for Collection repos
@@ -572,7 +588,13 @@ class AnsibleTriage(DefaultTriager):
                     if action_meta[u'REDO']:
                         redo = True
 
-                logging.info(u'finished triage for %s' % to_text(iw))
+                its2 = datetime.datetime.now()
+                td = (its2 - its1).total_seconds()
+                logging.info(u'finished triage for %s in %ss' % (to_text(iw), td))
+
+        ts2 = datetime.datetime.now()
+        td = (ts2 - ts1).total_seconds()
+        logging.info('triaged %s issues in %s seconds' % (icount, td))
 
     def eval_pr_param(self, pr):
         '''PR/ID can be a number, numberlist, script, jsonfile, or url'''
@@ -937,7 +959,7 @@ class AnsibleTriage(DefaultTriager):
                     actions.comments.append(comment)
                     if u'merge_commit' not in iw.labels:
                         actions.newlabel.append(u'merge_commit')
-                if self.meta.get(u'has_shippable'):
+                if self.meta.get(u'has_ci'):
                     actions.cancel_ci = True
             else:
                 if u'merge_commit' in iw.labels:
@@ -1030,25 +1052,13 @@ class AnsibleTriage(DefaultTriager):
                 if u'needs_rebase' in iw.labels:
                     actions.unlabel.append(u'needs_rebase')
 
-        # travis-ci.org ...
-        if iw.is_pullrequest():
-            if self.meta[u'has_travis'] and \
-                    not self.meta[u'has_travis_notification']:
-                tvars = {u'submitter': iw.submitter}
-                comment = self.render_boilerplate(
-                    tvars,
-                    boilerplate=u'travis_notify'
-                )
-                if comment not in actions.comments:
-                    actions.comments.append(comment)
-
-        # shippable failures shippable_test_result
+        # comments with CI failures
         if iw.is_pullrequest() and not self.meta[u'is_bad_pr']:
             if self.meta[u'ci_state'] == u'failure' and \
                     self.meta[u'needs_testresult_notification']:
                 tvars = {
                     u'submitter': iw.submitter,
-                    u'data': self.meta[u'shippable_test_results']
+                    u'data': self.meta[u'ci_test_results']
                 }
 
                 try:
@@ -1071,12 +1081,22 @@ class AnsibleTriage(DefaultTriager):
 
         # https://github.com/ansible/ansibullbot/issues/293
         if iw.is_pullrequest():
-            if not self.meta[u'has_shippable'] and not self.meta[u'has_travis']:
-                if u'needs_ci' not in iw.labels:
-                    actions.newlabel.append(u'needs_ci')
+            label = u'needs_ci'
+            if self.ci.name == 'azp' and not self.meta[u'has_ci']:
+                try:
+                    from ansibullbot.utils.shippable_api import ShippableCI
+                    shippable = ShippableCI(self.cachedir_base, iw)
+                    shippable.get_last_full_run_date()
+                    label = u'pre_azp'
+                except NoCIError:
+                    pass
+
+            if not self.meta[u'has_ci']:
+                if label not in iw.labels:
+                    actions.newlabel.append(label)
             else:
-                if u'needs_ci' in iw.labels:
-                    actions.unlabel.append(u'needs_ci')
+                if label in iw.labels:
+                    actions.unlabel.append(label)
 
         # MODULE CATEGORY LABELS
         # {u'cloud/amazon': u'aws', u'cloud/azure': u'azure', u'network': u'networking', u'cloud/google': u'gce', u'windows': u'windows', u'cloud/openstack': u'openstack', u'cloud/digital_ocean': u'digital_ocean', u'cloud': u'cloud'}
@@ -1371,9 +1391,7 @@ class AnsibleTriage(DefaultTriager):
 
         # https://github.com/ansible/ansibullbot/issues/406
         if iw.is_pullrequest():
-            if not self.meta[u'has_shippable_yaml']:
-
-                # no_shippable_yaml
+            if self.ci.name == 'shippable' and not self.meta[u'has_shippable_yaml']:
                 if not self.meta[u'has_shippable_yaml_notification']:
                     tvars = {u'submitter': iw.submitter}
                     comment = self.render_boilerplate(
@@ -1475,7 +1493,7 @@ class AnsibleTriage(DefaultTriager):
                 actions.close = True
 
         # https://github.com/ansible/ansibullbot/pull/664
-        if self.meta[u'needs_rebuild']:
+        if self.meta[u'needs_rebuild_all']:
             actions.rebuild = True
             if u'stale_ci' in actions.newlabel:
                 actions.newlabel.remove(u'stale_ci')
@@ -1987,7 +2005,7 @@ class AnsibleTriage(DefaultTriager):
 
         # ci_verified and test results
         self.meta.update(
-            get_shippable_run_facts(iw, self.meta, shippable=self.SR)
+            get_ci_run_facts(iw, self.meta, self.ci)
         )
 
         # needsinfo?
@@ -2050,7 +2068,7 @@ class AnsibleTriage(DefaultTriager):
         self.meta.update(get_filament_facts(iw, self.meta))
 
         # ci
-        self.meta.update(get_ci_facts(iw))
+        self.meta.update(get_ci_facts(iw, self.ci))
 
         # ci rebuilds
         self.meta.update(get_rebuild_facts(iw, self.meta))
@@ -2069,8 +2087,7 @@ class AnsibleTriage(DefaultTriager):
             get_rebuild_command_facts(
                 iw,
                 self.meta,
-                self.ansible_core_team,
-                self.SR
+                self.ci,
             )
         )
 
@@ -2416,35 +2433,34 @@ class AnsibleTriage(DefaultTriager):
             runid = self.meta.get(u'ci_run_number')
             if runid:
                 logging.info('Rebuilding CI %s for #%s' % (runid, iw.number))
-                self.SR.rebuild(runid, issueurl=iw.html_url)
+                self.ci.rebuild(runid)
             else:
                 logging.error(
-                    u'rebuild: no shippable runid for {}'.format(iw.number)
+                    u'rebuild: no CI runid for {}'.format(iw.number)
                 )
         elif actions.rebuild_failed:
             runid = self.meta.get(u'ci_run_number')
             if runid:
                 logging.info('Rebuilding CI %s for #%s' % (runid, iw.number))
-                self.SR.rebuild_failed(runid, issueurl=iw.html_url)
+                self.ci.rebuild_failed(runid)
             else:
                 logging.error(
-                    u'rebuild: no shippable runid for {}'.format(iw.number)
+                    u'rebuild: no CI runid for {}'.format(iw.number)
                 )
-
 
         if actions.cancel_ci:
             runid = self.meta.get(u'ci_run_number')
             if runid:
                 logging.info('Cancelling CI %s for #%s' % (runid, iw.number))
-                self.SR.cancel(runid, issueurl=iw.html_url)
+                self.ci.cancel(runid)
             else:
                 logging.error(
-                    u'cancel: no shippable runid for {}'.format(iw.number)
+                    u'cancel: no CI runid for {}'.format(iw.number)
                 )
 
         if actions.cancel_ci_branch:
             branch = iw.pullrequest.head.repo
-            self.SR.cancel_branch_runs(branch)
+            self.ci.cancel_on_branch(branch)
 
     def render_comment(self, boilerplate=None):
         """Renders templates into comments using the boilerplate as filename"""
@@ -2521,6 +2537,10 @@ class AnsibleTriage(DefaultTriager):
 
         parser.add_argument('--commit', dest='ansible_commit',
                             help="Use a specific commit for the indexers")
+
+        parser.add_argument("--ci", type=str, choices=VALID_CI_PROVIDERS,
+                            default=C.DEFAULT_CI_PROVIDER,
+                            help="Specify a CI provider that repo uses")
 
         return parser
 

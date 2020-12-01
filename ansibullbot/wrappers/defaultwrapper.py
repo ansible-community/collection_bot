@@ -1,5 +1,3 @@
-#!/usr/bin/python
-#
 # This file is part of Ansible
 #
 # Ansible is free software: you can redistribute it and/or modify
@@ -17,86 +15,47 @@
 
 from __future__ import print_function
 
+import datetime
 import inspect
 import json
 import logging
-import operator
 import os
 import re
-import shutil
 import sys
 import time
-from datetime import datetime
 
+import pytz
 import six
 
-# remember to pip install PyGithub, kids!
-import github
-
+import ansibullbot.constants as C
 from ansibullbot._pickle_compat import pickle_dump, pickle_load
 from ansibullbot._text_compat import to_text
-from ansibullbot.utils.extractors import extract_template_sections
-from ansibullbot.utils.extractors import extract_template_data
-from ansibullbot.wrappers.historywrapper import HistoryWrapper
-
 from ansibullbot.decorators.github import RateLimited
 from ansibullbot.errors import RateLimitError
+from ansibullbot.utils.extractors import get_template_data
+from ansibullbot.utils.timetools import strip_time_safely
+from ansibullbot.wrappers.historywrapper import HistoryWrapper
 
-import ansibullbot.constants as C
+
+class UnsetValue:
+    def __str__(self):
+        return "AnsibullbotUnsetValue()"
 
 
 class DefaultWrapper(object):
-
-    ALIAS_LABELS = {
-        u'core_review': [
-            u'core_review_existing'
-        ],
-        u'community_review': [
-            u'community_review_existing',
-            u'community_review_new',
-            u'community_review_owner_pr',
-        ],
-        u'shipit': [
-            u'shipit_owner_pr'
-        ],
-        u'needs_revision': [
-            u'needs_revision_not_mergeable'
-        ],
-        u'pending_action': [
-            u'pending_action_close_me',
-            u'pending_maintainer_unknown'
-        ]
-    }
-
-    MANUAL_INTERACTION_LABELS = [
-    ]
-
-    MUTUALLY_EXCLUSIVE_LABELS = [
-        u"bug_report",
-        u"feature_idea",
-        u"docs_report"
-    ]
-
-    TOPIC_MAP = {u'amazon': u'aws',
-                 u'google': u'gce',
-                 u'network': u'networking'}
-
-    REQUIRED_SECTIONS = []
-
-    TEMPLATE_HEADER = u'#####'
-
-    def __init__(self, github=None, repo=None, issue=None, cachedir=None, file_indexer=None):
-        self.meta = {}
-        self.cachedir = cachedir
+    def __init__(self, github=None, repo=None, issue=None, cachedir=None, gitrepo=None):
         self.github = github
         self.repo = repo
         self.instance = issue
-        self._assignees = False
-        self._comments = False
+        self.cachedir = cachedir
+        self.gitrepo = gitrepo
+
+        self.meta = {}
+        self._assignees = UnsetValue
         self._committer_emails = False
         self._committer_logins = False
         self._commits = False
-        self._events = False
+        self._events = UnsetValue
         self._history = False
         self._labels = False
         self._merge_commits = False
@@ -106,84 +65,15 @@ class DefaultWrapper(object):
         self._pr = False
         self._pr_status = False
         self._pr_reviews = False
-        self._reactions = False
         self._repo_full_name = False
         self._template_data = None
-        self._timeline = False
         self._required_template_sections = []
-        self.desired_labels = []
-        self.desired_assignees = []
-        self.current_events = []
-        self.current_comments = []
-        self.current_bot_comments = []
-        self.last_bot_comment = None
-        self.current_reactions = []
-        self.desired_comments = []
-        self.current_state = u'open'
-        self.desired_state = u'open'
-        self.pr_status_raw = None
         self.pull_raw = None
         self.pr_files = None
-        self.file_indexer = file_indexer
-
-        self.full_cachedir = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number)
-        )
-
-        self.valid_assignees = []
-        #self.raw_data_issue = self.load_update_fetch('raw_data', obj='issue')
+        self.full_cachedir = os.path.join(self.cachedir, u'issues', to_text(self.number))
         self._raw_data_issue = None
-
-    def get_rate_limit(self):
-        return self.repo.gh.get_rate_limit()
-
-    def get_current_time(self):
-        return datetime.utcnow()
-
-    def save_issue(self):
-        pfile = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.instance.number),
-            u'issue.pickle'
-        )
-        pdir = os.path.dirname(pfile)
-
-        if not os.path.isdir(pdir):
-            os.makedirs(pdir)
-
-        logging.debug(u'dump %s' % pfile)
-        with open(pfile, 'wb') as f:
-            pickle_dump(self.instance, f)
-
-    @RateLimited
-    def get_comments(self):
-        """Returns all current comments of the PR"""
-
-        comments = self.load_update_fetch(u'comments')
-
-        self.current_comments = [x for x in comments]
-        self.current_comments.reverse()
-
-        # look for any comments made by the bot
-        for idx, x in enumerate(self.current_comments):
-            body = x.body
-            lines = body.split(u'\n')
-            lines = [y.strip() for y in lines if y.strip()]
-
-            # FIXME, should this be `in C.DEFAULT_BOTNAMES?
-            if lines[-1].startswith(u'<!---') \
-                    and lines[-1].endswith(u'--->') \
-                    and u'boilerplate:' in lines[-1]\
-                    and x.user.login == C.DEFAULT_GITHUB_USERNAME:
-
-                parts = lines[-1].split()
-                boilerplate = parts[2]
-                self.current_bot_comments.append(boilerplate)
-
-        return self.current_comments
+        self._renamed_files = None
+        self._pullrequest_check_runs = None
 
     @property
     def url(self):
@@ -192,67 +82,82 @@ class DefaultWrapper(object):
     @property
     def raw_data_issue(self):
         if self._raw_data_issue is None:
-            self._raw_data_issue = \
-                self.load_update_fetch(u'raw_data', obj=u'issue')
+            self._raw_data_issue = self.load_update_fetch(u'raw_data', obj=u'issue')
         return self._raw_data_issue
 
     @property
+    def comments(self):
+        return [x for x in self.history.history if x[u'event'] == 'commented']
+
+    @property
     def events(self):
-        if self._events is False:
-            self._events = self.get_events()
+        if self._events is UnsetValue:
+            self._events = self._parse_events(self._get_timeline())
+
         return self._events
 
-    def get_events(self):
-        '''return a combined set of events and timeline'''
+    def _parse_events(self, events):
+        processed_events = []
+        for event_no, dd in enumerate(events):
+            if dd[u'event'] == u'committed':
+                # FIXME
+                # commits are added through HistoryWrapper.merge_commits()
+                continue
 
-        events = []
-        for prop in ['events', 'timeline']:
-            data = self.load_update_fetch_rest(prop)
+            # reviews do not have created_at keys
+            if not dd.get(u'created_at') and dd.get(u'submitted_at'):
+                dd[u'created_at'] = dd[u'submitted_at']
 
-            for di,dd in enumerate(data):
+            # commits do not have created_at keys
+            if not dd.get(u'created_at') and dd.get('author'):
+                dd[u'created_at'] = dd[u'author'][u'date']
 
-                if not isinstance(dd, dict):
-                    logging.error('%s is not a dict' % dd)
-                    raise Exception
+            # commit comments do not have created_at keys
+            if not dd.get(u'created_at') and dd.get('comments'):
+                dd[u'created_at'] = dd[u'comments'][0][u'created_at']
 
-                # reviews do not have created_at keys
-                if not dd.get(u'created_at') and dd.get(u'submitted_at'):
-                    dd[u'created_at'] = dd[u'submitted_at']
+            if not dd.get(u'created_at'):
+                raise AssertionError(dd)
 
-                # commits do not have created_at keys
-                if not dd.get(u'created_at') and dd.get('author'):
-                    dd[u'created_at'] = dd[u'author'][u'date']
+            # commits do not have actors
+            if not dd.get(u'actor'):
+                dd[u'actor'] = {'login': None}
 
-                # commit comments do not have created_at keys
-                if not dd.get(u'created_at') and dd.get('comments'):
-                    dd[u'created_at'] = dd[u'comments'][0][u'created_at']
+            # fix commits with no message
+            if dd[u'event'] == u'committed' and u'message' not in dd:
+                dd[u'message'] = u''
 
-                # commits do not have actors
-                if not dd.get(u'actor'):
-                    dd[u'actor'] = {'login': None}
+            if not dd.get(u'id'):
+                # set id as graphql node_id OR make one up
+                if u'node_id' in dd:
+                    dd[u'id'] = dd[u'node_id']
+                else:
+                    dd[u'id'] = '%s/%s/%s/%s' % (self.repo_full_name, self.number, 'timeline', event_no)
 
-                # timeline comments do not have bodies
-                if dd.get(u'event') == u'commented' and not dd.get(u'body'):
-                    continue
+            event = {}
+            event[u'id'] = dd[u'id']
+            event[u'actor'] = dd[u'actor'][u'login']
+            event[u'event'] = dd[u'event']
+            if isinstance(dd[u'created_at'], six.string_types):
+                dd[u'created_at'] = strip_time_safely(dd[u'created_at'])
 
-                if not dd.get(u'id'):
-                    # set id as graphql node_id OR make one up
-                    if u'node_id' in dd:
-                        dd[u'id'] = dd[u'node_id']
-                    else:
-                        dd[u'id'] = '%s/%s/%s/%s' % (self.repo_full_name, self.number, prop, di)
+            event[u'created_at'] = pytz.utc.localize(dd[u'created_at'])
 
-                ids = [x.get(u'id') for x in events]
-                if dd[u'id'] not in ids:
-                    events.append(dd)
+            if dd[u'event'] in [u'labeled', u'unlabeled']:
+                event[u'label'] = dd.get(u'label', {}).get(u'name', None)
+            elif dd[u'event'] == u'referenced':
+                event[u'commit_id'] = dd[u'commit_id']
+            elif dd[u'event'] == u'assigned':
+                event[u'assignee'] = dd[u'assignee'][u'login']
+                event[u'assigner'] = event[u'actor']
+            elif dd[u'event'] == u'commented':
+                event[u'body'] = dd[u'body']
+            elif dd[u'event'] == u'cross-referenced':
+                event[u'source'] = dd[u'source']
 
-        events = sorted(events, key=lambda x: x[u'created_at'])
+            processed_events.append(event)
 
-        return events
-
-    #def get_commits(self):
-    #    self.commits = self.load_update_fetch('commits')
-    #    return self.commits
+        return sorted(processed_events, key=lambda x: x[u'created_at'])
 
     def get_files(self):
         self.files = self.load_update_fetch(u'files')
@@ -262,85 +167,16 @@ class DefaultWrapper(object):
         self.review_comments = self.load_update_fetch(u'review_comments')
         return self.review_comments
 
-    @RateLimited
-    def _fetch_api_url(self, url):
-        # fetch the url and parse to json
-        '''
-        jdata = None
-        try:
-            resp = self.instance._requester.requestJson(
-                'GET',
-                url
-            )
-            data = resp[2]
-            jdata = json.loads(data)
-        except Exception as e:
-            logging.error(e)
-        '''
-
-        jdata = None
-        while True:
-            resp = self.instance._requester.requestJson(
-                u'GET',
-                url
-            )
-            data = resp[2]
-            jdata = json.loads(data)
-
-            if isinstance(jdata, dict) and jdata.get(u'documentation_url'):
-                if C.DEFAULT_BREAKPOINTS:
-                    import epdb; epdb.st()
-                else:
-                    raise RateLimitError("rate limited")
-            else:
-                break
-
-        return jdata
-
-    def relocate_pickle_files(self):
-        '''Move files to the correct location to fix bad pathing'''
-        srcdir = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.instance.number)
-        )
-        destdir = os.path.join(
-            self.cachedir,
-            to_text(self.instance.number)
-        )
-
-        if not os.path.isdir(srcdir):
-            return True
-
-        if not os.path.isdir(destdir):
-            os.makedirs(destdir)
-
-        # move the files
-        pfiles = os.listdir(srcdir)
-        for pf in pfiles:
-            src = os.path.join(srcdir, pf)
-            dest = os.path.join(destdir, pf)
-            shutil.move(src, dest)
-
-        # get rid of the bad dir
-        shutil.rmtree(srcdir)
-
-    def load_update_fetch_rest(self, property_name):
+    def _get_timeline(self):
         '''Use python-requests instead of pygithub'''
-
         data = None
 
-        cache_dir = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number),
-        )
-        cache_data = os.path.join(cache_dir, '%s_data.json' % property_name)
-        cache_meta = os.path.join(cache_dir, '%s_meta.json' % property_name)
+        cache_data = os.path.join(self.full_cachedir, 'timeline_data.json')
+        cache_meta = os.path.join(self.full_cachedir, 'timeline_meta.json')
         logging.debug(cache_data)
 
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
+        if not os.path.exists(self.full_cachedir):
+            os.makedirs(self.full_cachedir)
 
         meta = {}
         fetch = False
@@ -354,7 +190,7 @@ class DefaultWrapper(object):
             fetch = True
 
         # validate the data is not infected by ratelimit errors
-        if not fetch and property_name in ['events', 'timeline', 'comments']:
+        if not fetch:
             with open(cache_data, 'r') as f:
                 data = json.loads(f.read())
 
@@ -369,13 +205,13 @@ class DefaultWrapper(object):
             fetch = True
 
         if fetch:
-            property_url = self.url + '/' + property_name
-            data = self.github.get_request(property_url)
+            url = self.url + '/timeline'
+            data = self.github.get_request(url)
 
             with open(cache_meta, 'w') as f:
                 f.write(json.dumps({
                     'updated_at': self.updated_at.isoformat(),
-                    'url': property_url
+                    'url': url
                 }))
             with open(cache_data, 'w') as f:
                 f.write(json.dumps(data))
@@ -383,7 +219,7 @@ class DefaultWrapper(object):
         return data
 
     @RateLimited
-    def load_update_fetch(self, property_name, obj=None):
+    def load_update_fetch(self, property_name, obj=None, force=False):
         '''Fetch a property for an issue object'''
 
         # A pygithub issue object has methods such as ...
@@ -404,12 +240,7 @@ class DefaultWrapper(object):
         update = False
         write_cache = False
 
-        pfile = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number),
-            u'%s.pickle' % property_name
-        )
+        pfile = os.path.join(self.full_cachedir, u'%s.pickle' % property_name)
         pdir = os.path.dirname(pfile)
         logging.debug(pfile)
 
@@ -458,9 +289,9 @@ class DefaultWrapper(object):
                 raise Exception(u'property error')
 
         # pull all events if timestamp is behind or no events cached
-        if update or not events:
+        if update or not events or force:
             write_cache = True
-            updated = self.get_current_time()
+            updated = datetime.datetime.utcnow()
 
             if not hasattr(baseobj, u'get_' + property_name) \
                     and hasattr(baseobj, property_name):
@@ -488,222 +319,14 @@ class DefaultWrapper(object):
                         raise Exception(to_text(e))
                 events = [x for x in methodToCall()]
 
-        if write_cache or not os.path.isfile(pfile):
-            # need to dump the pickle back to disk
-            edata = [updated, events]
-            with open(pfile, 'wb') as f:
-                pickle_dump(edata, f)
+        if C.DEFAULT_PICKLE_ISSUES:
+            if write_cache or not os.path.isfile(pfile) or force:
+                # need to dump the pickle back to disk
+                edata = [updated, events]
+                with open(pfile, 'wb') as f:
+                    pickle_dump(edata, f)
 
         return events
-
-    def get_assignee(self):
-        assignee = None
-        if self.instance.assignee is None:
-            pass
-        elif type(self.instance.assignee) != list:
-            assignee = self.instance.assignee.login
-        else:
-            assignee = []
-            for x in self.instance.assignee:
-                assignee.append(x.login)
-            if C.DEFAULT_BREAKPOINTS:
-                logging.error(u'breakpoint!')
-                import epdb; epdb.st()
-            else:
-                raise Exception(u'exception')
-        return assignee
-
-    @property
-    def reactions(self):
-        if self._reactions is False:
-            self._reactions = self.load_update_fetch_rest('reactions')[:]
-        return self._reactions
-
-    @RateLimited
-    def get_submitter(self):
-        """Returns the submitter"""
-        return self.instance.user.login
-
-    #@property
-    def is_bot(self):
-        """Returns True is user is a GitHub Bot account"""
-        return self.instance.user.type == "Bot"
-
-    @RateLimited
-    def get_labels(self):
-        """Pull the list of labels on this Issue"""
-        labels = []
-        for label in self.instance.labels:
-            labels.append(label.name)
-        return labels
-
-    def get_template_data(self):
-        """Extract templated data from an issue body"""
-
-        if self.is_issue():
-            tfile = u'bug_report.md'
-        else:
-            tfile = u'PULL_REQUEST_TEMPLATE.md'
-
-        # FIXME See if templates exist in collection, if not fall back to gh/ansible-collections/.github repo
-        tf_content = to_text(open(tfile,"rb").read())
-
-
-        # pull out the section names from the template
-        tf_sections = extract_template_sections(tf_content, header=self.TEMPLATE_HEADER)
-
-        # what is required?
-        self._required_template_sections = \
-            [x.lower() for x in tf_sections.keys()
-             if tf_sections[x][u'required']]
-
-        # extract ...
-        template_data = \
-            extract_template_data(
-                self.instance.body,
-                issue_number=self.number,
-                issue_class=self.github_type,
-                sections=tf_sections.keys()
-            )
-
-        # try comments if the description was insufficient
-        if len(template_data.keys()) <= 2:
-            s_comments = self.history.get_user_comments(self.submitter)
-            for s_comment in s_comments:
-
-                _template_data = extract_template_data(
-                    s_comment,
-                    issue_number=self.number,
-                    issue_class=self.github_type,
-                    sections=tf_sections.keys()
-                )
-
-                if _template_data:
-                    for k, v in _template_data.items():
-                        if not v:
-                            continue
-                        if v and (k not in template_data or not template_data.get(k)):
-                            template_data[k] = v
-
-        if u'ANSIBLE VERSION' in tf_sections and u'ansible version' not in template_data:
-
-            # FIXME - abstract this into a historywrapper method
-            vlabels = [x for x in self.history.history if x[u'event'] == u'labeled']
-            vlabels = [x for x in vlabels if x[u'actor'] not in C.DEFAULT_BOTNAMES]
-            vlabels = [x[u'label'] for x in vlabels if x[u'label'].startswith(u'affects_')]
-            vlabels = [x for x in vlabels if x.startswith(u'affects_')]
-
-            versions = [x.split(u'_')[1] for x in vlabels]
-            versions = [float(x) for x in versions]
-            if versions:
-                version = versions[-1]
-                template_data[u'ansible version'] = to_text(version)
-
-        # Don't think "C:" (component) labels are needed for collections
-        if u'COMPONENT NAME' in tf_sections and u'component name' not in template_data:
-            if self.is_pullrequest():
-                fns = self.files
-                if fns:
-                    template_data[u'component name'] = u'\n'.join(fns)
-                    template_data[u'component_raw'] = u'\n'.join(fns)
-            else:
-                clabels = [x for x in self.labels if x.startswith(u'c:')]
-                if clabels:
-                    fns = []
-                    for clabel in clabels:
-                        clabel = clabel.replace(u'c:', u'')
-                        fns.append(u'lib/ansible/' + clabel)
-                    template_data[u'component name'] = u'\n'.join(fns)
-                    template_data[u'component_raw'] = u'\n'.join(fns)
-
-                elif u'documentation' in template_data.get(u'issue type', u'').lower():
-                    template_data[u'component name'] = u'docs'
-                    template_data[u'component_raw'] = u'docs'
-
-        if u'ISSUE TYPE' in tf_sections and u'issue type' not in template_data:
-
-            # FIXME - turn this into a real classifier based on work done in
-            # jctanner/pr-triage repo.
-
-            itype = None
-
-            while not itype:
-
-                for label in self.labels:
-                    if label.startswith(u'bug'):
-                        itype = u'bug'
-                        break
-                    elif label.startswith(u'feature'):
-                        itype = u'feature'
-                        break
-                    elif label.startswith(u'doc'):
-                        itype = u'docs'
-                        break
-                if itype:
-                    break
-
-                if self.is_pullrequest():
-                    fns = self.files
-                    for fn in fns:
-                        if fn.startswith(u'doc'):
-                            itype = u'docs'
-                            break
-                if itype:
-                    break
-
-                msgs = [self.title, self.body]
-                if self.is_pullrequest():
-                    msgs += [x[u'message'] for x in self.history.history if x[u'event'] == u'committed']
-
-                msgs = [x for x in msgs if x]
-                msgs = [x.lower() for x in msgs]
-
-                for msg in msgs:
-                    if u'fix' in msg:
-                        itype = u'bug'
-                        break
-                    if u'addresses' in msg:
-                        itype = u'bug'
-                        break
-                    if u'broke' in msg:
-                        itype = u'bug'
-                        break
-                    if u'add' in msg:
-                        itype = u'feature'
-                        break
-                    if u'should' in msg:
-                        itype = u'feature'
-                        break
-                    if u'please' in msg:
-                        itype = u'feature'
-                        break
-                    if u'feature' in msg:
-                        itype = u'feature'
-                        break
-
-                # quit now
-                break
-
-            if itype and itype == u'bug' and self.is_issue():
-                template_data[u'issue type'] = u'bug report'
-            elif itype and itype == u'bug' and not self.is_issue():
-                template_data[u'issue type'] = u'bugfix pullrequest'
-            elif itype and itype == u'feature' and self.is_issue():
-                template_data[u'issue type'] = u'feature idea'
-            elif itype and itype == u'feature' and not self.is_issue():
-                template_data[u'issue type'] = u'feature pullrequest'
-            elif itype and itype == u'docs' and self.is_issue():
-                template_data[u'issue type'] = u'documentation report'
-            elif itype and itype == u'docs' and not self.is_issue():
-                template_data[u'issue type'] = u'documenation pullrequest'
-
-        return template_data
-
-    @property
-    def template_data(self):
-        if self._template_data is None:
-            self._template_data = self.get_template_data()
-        return self._template_data
 
     @property
     def missing_template_sections(self):
@@ -713,58 +336,19 @@ class DefaultWrapper(object):
                    if x not in td or not td[x]]
         return missing
 
-    def resolve_desired_labels(self, desired_label):
-        for resolved_label, aliases in six.iteritems(self.ALIAS_LABELS):
-            if desired_label in aliases:
-                return resolved_label
-        return desired_label
+    @RateLimited
+    def get_labels(self):
+        """Pull the list of labels on this Issue"""
+        labels = []
+        for label in self.instance.labels:
+            labels.append(label.name)
+        return labels
 
-    def process_mutually_exclusive_labels(self, name=None):
-        resolved_name = self.resolve_desired_labels(name)
-        if resolved_name in self.MUTUALLY_EXCLUSIVE_LABELS:
-            for label in self.desired_labels:
-                resolved_label = self.resolve_desired_labels(label)
-                if resolved_label in self.MUTUALLY_EXCLUSIVE_LABELS:
-                    self.desired_labels.remove(label)
-
-    def add_desired_label(self, name=None, mutually_exclusive=[], force=False):
-        """Adds a label to the desired labels list"""
-        if name and name not in self.desired_labels:
-            if force:
-                self.desired_labels.append(name)
-            elif not mutually_exclusive:
-                self.process_mutually_exclusive_labels(name=name)
-                self.desired_labels.append(name)
-            else:
-                mutually_exclusive = \
-                    [x.replace(u' ', u'_') for x in mutually_exclusive]
-                me = [x for x in self.desired_labels if x in mutually_exclusive]
-                if len(me) == 0:
-                    self.desired_labels.append(name)
-
-    def pop_desired_label(self, name=None):
-        """Deletes a label to the desired labels list"""
-        if name in self.desired_labels:
-            self.desired_labels.remove(name)
-
-    def is_labeled_for_interaction(self):
-        """Returns True if issue is labeld for interaction"""
-        for current_label in self.get_current_labels():
-            if current_label in self.MANUAL_INTERACTION_LABELS:
-                return True
-        return False
-
-    def add_desired_comment(self, boilerplate=None):
-        """Adds a boilerplate key to the desired comments list"""
-        if boilerplate and boilerplate not in self.desired_comments:
-            self.desired_comments.append(boilerplate)
-
-    def get_missing_sections(self):
-        missing_sections = \
-            [x for x in self.REQUIRED_SECTIONS
-                if x not in self.template_data or
-                not self.template_data.get(x)]
-        return missing_sections
+    @property
+    def template_data(self):
+        if self._template_data is None:
+            self._template_data = get_template_data(self)
+        return self._template_data
 
     def get_issue(self):
         """Gets the issue from the GitHub API"""
@@ -785,43 +369,29 @@ class DefaultWrapper(object):
         """Adds a comment to the Issue using the GitHub API"""
         self.get_issue().create_comment(comment)
 
-    def set_desired_state(self, state):
-        assert state in [u'open', u'closed']
-        self.desired_state = state
-
-    def set_description(self, description):
-        # http://pygithub.readthedocs.io/en/stable/github_objects/Issue.html#github.Issue.Issue.edit
-        self.instance.edit(body=description)
+    @RateLimited
+    def remove_comment_by_id(self, commentid):
+        if not isinstance(commentid, int):
+            raise Exception("commentIds must be integers!")
+        comment_url = os.path.join(
+            C.DEFAULT_GITHUB_URL,
+            'repos',
+            self.repo_full_name,
+            'issues',
+            'comments',
+            str(commentid)
+        )
+        current_data = self.github.get_request(comment_url)
+        if current_data and current_data.get('message') != 'Not Found':
+            ok = self.github.delete_request(comment_url)
+            if not ok:
+                raise Exception("failed to delete commentid %s for %s" % (commentid, self.html_url))
 
     @property
     def assignees(self):
-        if self._assignees is False:
-            self._assignees = self.get_assignees()
+        if self._assignees is UnsetValue:
+            self._assignees = [x.login for x in self.instance.assignees]
         return self._assignees
-
-    def get_assignees(self):
-        # https://developer.github.com/v3/issues/assignees/
-        # https://developer.github.com/changes/2016-5-27-multiple-assignees/
-        # https://github.com/PyGithub/PyGithub/pull/469
-        # the pygithub issue object only offers a single assignee (right now)
-
-        assignees = []
-        if not hasattr(self.instance, u'assignees'):
-            raw_assignees = self.raw_data_issue[u'assignees']
-            assignees = \
-                [x.login for x in self.instance._makeListOfClassesAttribute(
-                    github.NamedUser.NamedUser,
-                    raw_assignees).value]
-        else:
-            assignees = [x.login for x in self.instance.assignees]
-
-        res = [x for x in assignees]
-        return res
-
-    def add_desired_assignee(self, assignee):
-        if assignee not in self.desired_assignees \
-                and assignee in self.valid_assignees:
-            self.desired_assignees.append(assignee)
 
     def assign_user(self, user):
         assignees = [x for x in self.assignees]
@@ -830,7 +400,7 @@ class DefaultWrapper(object):
             self._edit_assignees(assignees)
 
     def unassign_user(self, user):
-        assignees = [x for x in self.current_assignees]
+        assignees = [x for x in self.assignees]
         if user in self.assignees:
             assignees.remove(user)
             self._edit_assignees(assignees)
@@ -860,34 +430,16 @@ class DefaultWrapper(object):
                 print(u'ERROR: failed to edit assignees')
                 sys.exit(1)
 
-    @RateLimited
-    def _delete_comment_by_url(self, url):
-        # https://developer.github.com/v3/issues/comments/#delete-a-comment
-        headers, data = self.instance._requester.requestJsonAndCheck(
-            u"DELETE",
-            url,
-        )
-        if headers[u'status'] != u'204 No Content':
-            print(u'ERROR: failed to remove %s' % url)
-            sys.exit(1)
-        return True
-
     def is_pullrequest(self):
-        if self.github_type == u'pullrequest':
-            return True
-        else:
-            return False
+        return self.github_type == u'pullrequest'
 
     def is_issue(self):
-        if self.github_type == u'issue':
-            return True
-        else:
-            return False
+        return self.github_type == u'issue'
 
     @property
     def age(self):
         created = self.created_at
-        now = datetime.now()
+        now = datetime.datetime.utcnow()
         age = now - created
         return age
 
@@ -898,7 +450,6 @@ class DefaultWrapper(object):
     @property
     def repo_full_name(self):
         '''return the <org>/<repo> string'''
-
         # prefer regex over making GET calls
         if self._repo_full_name is False:
             try:
@@ -923,13 +474,12 @@ class DefaultWrapper(object):
 
     @property
     def updated_at(self):
-
         # this is a hack to fix unit tests
         if self.instance is not None:
             if self.instance.updated_at is not None:
                 return self.instance.updated_at
 
-        return datetime.now()
+        return datetime.datetime.utcnow()
 
     @property
     def closed_at(self):
@@ -937,7 +487,6 @@ class DefaultWrapper(object):
 
     @property
     def merged_at(self):
-        # only pullrequest objects have merged_at
         return self.instance.merged_at
 
     @property
@@ -959,8 +508,7 @@ class DefaultWrapper(object):
     def submitter(self):
         # auto-migrated issue by ansibot{-dev}
         # figure out the original submitter
-        # FIXME Is this right?
-        if self.instance.user.login in C.DEFAULT_BOTNAMES:
+        if self.instance.user.login in C.DEFAULT_BOT_NAMES:
             m = re.match(u'From @(.*) on', self.instance.body)
             if m:
                 return m.group(1)
@@ -968,17 +516,10 @@ class DefaultWrapper(object):
         return self.instance.user.login
 
     @property
-    def comments(self):
-        if self._comments is False:
-            self._comments = self.get_comments()
-        return self._comments
-
-    @property
     def pullrequest(self):
         if not self._pr:
             logging.debug(u'@pullrequest.get_pullrequest #%s' % self.number)
             self._pr = self.repo.get_pullrequest(self.number)
-            #self.repo.save_pullrequest(self._pr)
         return self._pr
 
     def update_pullrequest(self):
@@ -992,6 +533,19 @@ class DefaultWrapper(object):
 
     @property
     @RateLimited
+    def pullrequest_check_runs(self):
+        if self._pullrequest_check_runs is None:
+            logging.info(u'fetching pull request check runs: stale, no previous data')
+            url = u'https://api.github.com/repos/%s/commits/%s/check-runs' % (self.repo_full_name, self.pullrequest.head.sha)
+            self._pullrequest_check_runs = []
+            for resp_data in self.github.get_request_gen(url):
+                for check_runs_data in resp_data['check_runs']:
+                    self._pullrequest_check_runs.append(check_runs_data)
+
+        return self._pullrequest_check_runs
+
+    @property
+    @RateLimited
     def pullrequest_raw_data(self):
         if not self.pull_raw:
             logging.info(u'@pullrequest_raw_data')
@@ -999,35 +553,6 @@ class DefaultWrapper(object):
         return self.pull_raw
 
     def get_pullrequest_status(self, force_fetch=False):
-
-        def sort_unique_statuses(statuses):
-            '''reduce redundant statuses to the final run for each id'''
-            result = []
-            groups = []
-            thisgroup = []
-            for idx, x in enumerate(statuses):
-                if not thisgroup:
-                    thisgroup.append(x)
-                    if idx == len(statuses) - 1:
-                        groups.append(thisgroup)
-                    continue
-                else:
-                    if thisgroup[-1][u'target_url'] == x[u'target_url']:
-                        thisgroup.append(x)
-                    else:
-                        groups.append(thisgroup)
-                        thisgroup = []
-                        thisgroup.append(x)
-
-                    if idx == len(statuses) - 1:
-                        groups.append(thisgroup)
-
-            for group in groups:
-                group.sort(key=operator.itemgetter(u'updated_at'))
-                result.append(group[-1])
-
-            return result
-
         fetched = False
         jdata = None
         pdata = None
@@ -1035,12 +560,7 @@ class DefaultWrapper(object):
         rd = self.pullrequest_raw_data
         surl = rd[u'statuses_url']
 
-        pfile = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number),
-            u'pr_status.pickle'
-        )
+        pfile = os.path.join(self.full_cachedir, u'pr_status.pickle')
         pdir = os.path.dirname(pfile)
         if not os.path.isdir(pdir):
             os.makedirs(pdir)
@@ -1054,7 +574,14 @@ class DefaultWrapper(object):
             # is the data stale?
             if pdata[0] < self.pullrequest.updated_at or force_fetch:
                 logging.info(u'fetching pr status: stale, previous from %s' % pdata[0])
-                jdata = self._fetch_api_url(surl)
+                jdata = self.github.get_request(surl)
+
+                if isinstance(jdata, dict):
+                    # https://github.com/ansible/ansibullbot/issues/959
+                    logging.error(u'Got the following error while fetching PR status: %s', jdata.get(u'message'))
+                    logging.error(jdata)
+                    return []
+
                 self.log_ci_status(jdata)
                 fetched = True
             else:
@@ -1063,7 +590,8 @@ class DefaultWrapper(object):
         # missing?
         if not jdata:
             logging.info(u'fetching pr status: !data')
-            jdata = self._fetch_api_url(surl)
+            jdata = self.github.get_request(surl)
+            # FIXME? should we self.log_ci_status(jdata) here too?
             fetched = True
 
         if fetched or not os.path.isfile(pfile):
@@ -1072,20 +600,11 @@ class DefaultWrapper(object):
             with open(pfile, 'wb') as f:
                 pickle_dump(pdata, f)
 
-        # remove intermediate duplicates
-        #jdata = sort_unique_statuses(jdata)
-
         return jdata
 
     def log_ci_status(self, status_data):
         '''Keep track of historical CI statuses'''
-
-        logfile = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number),
-            u'pr_status_log.json'
-        )
+        logfile = os.path.join(self.full_cachedir, u'pr_status_log.json')
 
         jdata = {}
         if os.path.isfile(logfile):
@@ -1127,6 +646,12 @@ class DefaultWrapper(object):
             self._pr_status = self.get_pullrequest_status(force_fetch=False)
         return self._pr_status
 
+    def pullrequest_status_by_context(self, context):
+        return [
+            s for s in self.pullrequest_status
+            if isinstance(s, dict) and s.get('context') == context
+        ]
+
     @property
     def files(self):
         if self.is_issue():
@@ -1138,14 +663,15 @@ class DefaultWrapper(object):
 
     @property
     def new_files(self):
-        new_files = [x for x in self.files if x not in self.file_indexer.files]
+        new_files = [x for x in self.files if x not in self.gitrepo.files]
+        new_files = [x for x in new_files if not self.gitrepo.existed(x)]
         return new_files
 
     @property
     def new_modules(self):
         new_modules = self.new_files
         new_modules = [
-            x for x in new_modules if x.startswith(u'plugins/modules')
+            x for x in new_modules if x.startswith(u'lib/ansible/modules')
         ]
         new_modules = [
             x for x in new_modules if not os.path.basename(x) == u'__init__.py'
@@ -1165,7 +691,6 @@ class DefaultWrapper(object):
     @property
     def labels(self):
         if self._labels is False:
-            logging.debug(u'_labels == False')
             self._labels = [x for x in self.get_labels()]
         return self._labels
 
@@ -1195,10 +720,8 @@ class DefaultWrapper(object):
         jdata = self.paginated_request(reviews_url, headers=headers)
         return jdata
 
-
     @RateLimited
     def paginated_request(self, url, headers=None):
-
         if headers is None:
             headers = {}
 
@@ -1255,8 +778,7 @@ class DefaultWrapper(object):
     @property
     def history(self):
         if self._history is False:
-            self._history = \
-                HistoryWrapper(self, cachedir=self.cachedir, usecache=True)
+            self._history = HistoryWrapper(self, cachedir=self.cachedir)
         return self._history
 
     @RateLimited
@@ -1293,7 +815,6 @@ class DefaultWrapper(object):
 
     @property
     def mergeable_state(self):
-
         if not self.is_pullrequest() or self.pullrequest.state == u'closed':
             return None
 
@@ -1319,16 +840,11 @@ class DefaultWrapper(object):
 
     @property
     def wip(self):
-        '''Is this a WIP?'''
         if self.title.startswith(u'WIP'):
             return True
         elif u'[WIP]' in self.title:
             return True
         return False
-
-    @property
-    def incoming_repo(self):
-        return self.pullrequest.head.repo
 
     @property
     def incoming_repo_exists(self):
@@ -1342,18 +858,11 @@ class DefaultWrapper(object):
             return None
 
     @property
-    def incoming_repo_branch(self):
-        return self.pullrequest.head.ref
-
-    @property
     def from_fork(self):
-        """
-        Returns False if this PR is from a branch on the main branch
-        """
         if not self.incoming_repo_exists:
             return True
 
-        return self.incoming_repo_slug != self.repo.repo_path
+        return self.incoming_repo_slug != u'ansible/ansible'
 
     @RateLimited
     def get_commit_parents(self, commit):
@@ -1417,7 +926,6 @@ class DefaultWrapper(object):
         return self._committer_logins
 
     def merge(self):
-
         # https://developer.github.com/v3/repos/merging/
         # def merge(self, commit_message=github.GithubObject.NotSet)
 
@@ -1498,16 +1006,15 @@ class DefaultWrapper(object):
                 self._migrated_from = migrated_issue
             else:
                 for comment in self.comments:
-                    if comment.body.lower().startswith(u'migrated from'):
+                    if comment[u'body'].lower().startswith(u'migrated from'):
                         self._migrated = True
-                        bparts = comment.body.split()
+                        bparts = comment[u'body'].split()
                         self._migrated_from = bparts[2]
                         break
         return self._migrated
 
     def pullrequest_filepath_exists(self, filepath):
         ''' Check if a file exists on the submitters branch '''
-
         # https://github.com/ansible/ansibullbot/issues/406
 
         # https://developer.github.com/v3/repos/contents/
@@ -1522,12 +1029,8 @@ class DefaultWrapper(object):
         sha = self.pullrequest.head.sha
         pdata = None
         resp = None
-        cachefile = os.path.join(
-            self.cachedir,
-            u'issues',
-            to_text(self.number),
-            u'shippable_yml.pickle'
-        )
+        cache_file_name = filepath.replace('.', '_').replace('/', '_') + '.pickle'
+        cachefile = os.path.join(self.full_cachedir, cache_file_name)
 
         try:
             if os.path.isfile(cachefile):
@@ -1561,3 +1064,23 @@ class DefaultWrapper(object):
         if resp[0]:
             result = True
         return result
+
+    @property
+    def renamed_files(self):
+        ''' A map of renamed files to prevent other code from thinking these are new files '''
+        if self._renamed_files is not None:
+            return self._renamed_files
+
+        self._renamed_files = {}
+        if self.is_issue():
+            return self._renamed_files
+
+        for x in self.commits:
+            rd = x.raw_data
+            for filed in rd.get('files', []):
+                if filed.get('previous_filename'):
+                    src = filed['previous_filename']
+                    dst = filed['filename']
+                    self._renamed_files[dst] = src
+
+        return self._renamed_files

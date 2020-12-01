@@ -200,6 +200,7 @@ YAML_FILENAME_EXTENSIONS = ["", ".yml", ".yaml", ".json"]
 
 # sections in config file
 DEFAULTS = 'defaults'
+AZP = 'azp'
 
 # We don't want debug in production
 DEFAULT_DEBUG = get_config(
@@ -209,6 +210,16 @@ DEFAULT_DEBUG = get_config(
     '%s_DEBUG' % PROG_NAME.upper(),
     False,
     value_type='string'
+)
+
+# who dat?
+DEFAULT_BOT_NAMES = get_config(
+    p,
+    DEFAULTS,
+    'bot_names',
+    '%s_DEBUG' % PROG_NAME.upper(),
+    ['ansibot', 'ansibotdev', 'ansibullbot'],
+    value_type='list'
 )
 
 # the sqlite database unc
@@ -239,16 +250,6 @@ DEFAULT_RATELIMIT = get_config(
     '%s_RATELIMIT' % PROG_NAME.upper(),
     True,
     value_type='boolean'
-)
-
-# GitHub accounts to treat as bots
-DEFAULT_BOTNAMES = get_config(
-    p,
-    DEFAULTS,
-    'botnames',
-    '%s_BOTNAMES' % PROG_NAME.upper(),
-    [u'ansibot', u'ansibotdev', u'ansibullbot'],
-    value_type='list'
 )
 
 DEFAULT_GITHUB_URL = get_config(
@@ -305,6 +306,15 @@ DEFAULT_SHIPPABLE_URL = get_config(
     value_type='string'
 )
 
+DEFAULT_CI_PROVIDER = get_config(
+    p,
+    DEFAULTS,
+    'ci_provider',
+    '%s_CI_PROVIDER' % PROG_NAME.upper(),
+    u'shippable',
+    value_type='string'
+)
+
 DEFAULT_NEEDS_INFO_WARN = get_config(
     p,
     'needs_info',
@@ -333,6 +343,56 @@ DEFAULT_STALE_WINDOW = get_config(
     value_type='int'
 )
 
+
+# Pickle the issue objects?
+DEFAULT_PICKLE_ISSUES = get_config(
+    p,
+    DEFAULTS,
+    'requests_cache',
+    '%s_PICKLE_ISSUES' % PROG_NAME.upper(),
+    True,
+    value_type='boolean'
+)
+
+###########################################
+#   AZURE PIPELINES
+###########################################
+
+DEFAULT_AZP_ORG = get_config(
+    p,
+    AZP,
+    'org',
+    '%s_AZP_ORG' % PROG_NAME.upper(),
+    u'',
+    value_type='string'
+)
+
+DEFAULT_AZP_PROJECT = get_config(
+    p,
+    AZP,
+    'project',
+    '%s_AZP_PROJECT' % PROG_NAME.upper(),
+    u'',
+    value_type='string'
+)
+
+DEFAULT_AZP_USER = get_config(
+    p,
+    AZP,
+    'user',
+    '%s_AZP_USER' % PROG_NAME.upper(),
+    u'',
+    value_type='string'
+)
+
+DEFAULT_AZP_TOKEN = get_config(
+    p,
+    AZP,
+    'token',
+    '%s_AZP_TOKEN' % PROG_NAME.upper(),
+    u'',
+    value_type='string'
+)
 
 ###########################################
 #   METADATA RECEIVER
