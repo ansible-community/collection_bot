@@ -137,6 +137,11 @@ def get_automerge_facts(issuewrapper, meta):
 def needs_community_review(meta, issue):
     '''Notify community for more shipits?'''
 
+    # Don't spam requesting reviews from maintainers of
+    # Other modules in this directory - gundalow
+    return False
+
+
     if not meta[u'is_new_module']:
         return False
 
