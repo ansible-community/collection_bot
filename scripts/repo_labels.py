@@ -33,23 +33,35 @@ with open('labels.yml', 'w') as f:
 ```
 """
 
+REPOS = [
+        'ansible-collections/community.general',
+        'ansible-collections/community.network',
+#       'ansible-collections/community.'.
+#       'ansible-collections/community.general'.
+#       'ansible-collections/community.general'.
+
+        ]
 with open('labels.yml', 'rb') as f:
     want_labels = yaml.safe_load(f)
 
-repo = g.get_repo("ansible-collections/FIXMEREPONAME")
+for repo_name in REPOS:
+    print(repo_name, end=' ', flush=True)
+    repo = g.get_repo(repo_name)
 
-# label_response = dest_repo.get_labels()
-# current_labels = [{ 'name': i.name, 'color': i.color, 'description': i.description } for i in label_response]
-# we could do something with comparing the current and desired labels here
+    # label_response = dest_repo.get_labels()
+    # current_labels = [{ 'name': i.name, 'color': i.color, 'description': i.description } for i in label_response]
+    # we could do something with comparing the current and desired labels here
 
-for label in want_labels:
-    if label['description'] is not None:
-        create_args = dict(name=label['name'], color=label['color'], description=label['description'])
-    else:
-        create_args = dict(name=label['name'], color=label['color'])
+    for label in want_labels:
+        print(".", end = '', flush=True)
+        if label['description'] is not None:
+            create_args = dict(name=label['name'], color=label['color'], description=label['description'])
+        else:
+            create_args = dict(name=label['name'], color=label['color'])
 
-    try:
-        repo.create_label(**create_args)
-    except GithubException as e:
-        if e.data['errors'][0]['code'] == 'already_exists':
-            repo.get_label(label['name']).edit(**create_args)
+        try:
+            repo.create_label(**create_args)
+        except GithubException as e:
+            if e.data['errors'][0]['code'] == 'already_exists':
+                repo.get_label(label['name']).edit(**create_args)
+    print("")
