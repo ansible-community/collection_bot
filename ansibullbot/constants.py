@@ -287,24 +287,6 @@ DEFAULT_GITHUB_TOKEN = get_config(
     value_type='string'
 )
 
-DEFAULT_SHIPPABLE_TOKEN = get_config(
-    p,
-    DEFAULTS,
-    'shippable_token',
-    '%s_SHIPPABLE_TOKEN' % PROG_NAME.upper(),
-    '',
-    value_type='string'
-)
-
-DEFAULT_SHIPPABLE_URL = get_config(
-    p,
-    DEFAULTS,
-    'shippable_url',
-    '%s_SHIPPABLE_URL' % PROG_NAME.upper(),
-    u'https://api.shippable.com',
-    value_type='string'
-)
-
 DEFAULT_NEEDS_INFO_WARN = get_config(
     p,
     'needs_info',

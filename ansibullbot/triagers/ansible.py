@@ -56,7 +56,6 @@ from ansibullbot.utils.timetools import strip_time_safely
 from ansibullbot.utils.version_tools import AnsibleVersionIndexer
 from ansibullbot.utils.file_tools import FileIndexer
 from ansibullbot.utils.migrator import IssueMigrator
-from ansibullbot.utils.shippable_api import ShippableRuns
 from ansibullbot.utils.systemtools import run_command
 from ansibullbot.utils.receiver_client import post_to_receiver
 from ansibullbot.utils.webscraper import GithubWebScraper
@@ -67,10 +66,6 @@ from ansibullbot.errors import LabelWafflingError
 
 from ansibullbot.triagers.plugins.backports import get_backport_facts
 from ansibullbot.triagers.plugins.botstatus import get_bot_status_facts
-from ansibullbot.triagers.plugins.ci_rebuild import get_ci_facts
-from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_facts
-from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_command_facts
-from ansibullbot.triagers.plugins.ci_rebuild import get_rebuild_merge_facts
 from ansibullbot.triagers.plugins.community_workgroups import get_community_workgroup_facts
 from ansibullbot.triagers.plugins.component_matching import get_component_match_facts
 from ansibullbot.triagers.plugins.cross_references import get_cross_reference_facts
@@ -120,7 +115,6 @@ class AnsibleActions(DefaultActions):
         self.rebuild = False
         self.rebuild_failed = False
         self.cancel_ci = False
-        self.cancel_ci_branch = False
 
 
 class AnsibleTriage(DefaultTriager):
@@ -351,20 +345,6 @@ class AnsibleTriage(DefaultTriager):
             # where to store junk
             self.cachedir_collection = os.path.expanduser(self.cachedir_base+self._repo)
 
-            # instantiate shippable api
-            logging.info('creating shippable wrapper')
-            spath = os.path.join(self.cachedir_collection, 'shippable.runs')
-            shippable_prj_id = repo_data[self._repo]['shippable_prj']
-            shippable_url = u'%s/runs?projectIds=%s&isPullRequest=True' % (
-                C.DEFAULT_SHIPPABLE_URL,
-                shippable_prj_id
-            )
-            self.SR = ShippableRuns(url=shippable_url,
-                                    project_id=shippable_prj_id,
-                                    cachedir=spath,
-                                    writecache=True)
-            self.SR.update()
-
             # wrap the connection
             logging.info('creating api wrapper')
             self.ghw = GithubWrapper(self.gh, cachedir=self.cachedir_collection)
@@ -386,8 +366,8 @@ class AnsibleTriage(DefaultTriager):
             # update component matcher
             self.component_matcher.update(email_cache=self.module_indexer.emails_cache)
 
-            # update shippable run data
-            self.SR.update()
+            # # update shippable run data
+            # self.SR.update()
 
         # is automerge allowed?
         if self.botmetafile is not None:
@@ -513,22 +493,18 @@ class AnsibleTriage(DefaultTriager):
                                 # last completion time on shippable, we need
                                 # to reprocess because the ci status has
                                 # probabaly changed.
-                                if skip and iw.is_pullrequest():
-                                    ua = to_text(iw.pullrequest.updated_at.isoformat())
-                                    mua = strip_time_safely(lmeta[u'updated_at'])
-                                    lsr = self.SR.get_last_completion(iw.number)
-                                    if (lsr and lsr > mua) or \
-                                            ua > lmeta[u'updated_at']:
-                                        skip = False
+                                # if skip and iw.is_pullrequest():
+                                #     ua = to_text(iw.pullrequest.updated_at.isoformat())
+                                #     mua = strip_time_safely(lmeta[u'updated_at'])
+                                #     lsr = self.SR.get_last_completion(iw.number)
+                                #     if (lsr and lsr > mua) or \
+                                #             ua > lmeta[u'updated_at']:
+                                #         skip = False
 
                             # was this in the stale list?
                             if skip and not mod_repo:
                                 if iw.number in self.repos[repopath][u'stale']:
                                     skip = False
-
-                            # always poll rebuilds till they are merged
-                            if lmeta.get(u'needs_rebuild') or lmeta.get(u'admin_merge'):
-                                skip = False
 
                             # do a final check on the timestamp in meta
                             if skip and not mod_repo:
@@ -862,8 +838,6 @@ class AnsibleTriage(DefaultTriager):
                 actions.comments.append(comment)
                 if C.features.is_enabled('close_missing_ref_prs'):
                     actions.close = True
-                actions.cancel_ci = True
-                actions.cancel_ci_branch = True
                 return
 
             # To avoid the repo being poluted with lots of branches which end users end up cloning
@@ -874,8 +848,6 @@ class AnsibleTriage(DefaultTriager):
                 comment = self.render_boilerplate(tvars, boilerplate=u'fork')
                 actions.comments.append(comment)
                 actions.close = True
-                actions.cancel_ci = True
-                actions.cancel_ci_branch = True
                 return
 
         # indicate what components were matched
@@ -883,7 +855,7 @@ class AnsibleTriage(DefaultTriager):
             if iw.is_issue() and self.meta.get(u'needs_component_message'):
                 tvars = {
                     u'meta': self.meta,
-                    u'base_url': 'https://github.com/%s/blob/main/' % (self.collection),
+                    u'base_url': 'https://github.com/%s/blob/main/' % (self.repo),
                 }
                 comment = self.render_boilerplate(
                     tvars, boilerplate=u'components_banner'
@@ -956,17 +928,9 @@ class AnsibleTriage(DefaultTriager):
                     actions.comments.append(comment)
                     if u'merge_commit' not in iw.labels:
                         actions.newlabel.append(u'merge_commit')
-                if self.meta.get(u'has_shippable'):
-                    actions.cancel_ci = True
             else:
                 if u'merge_commit' in iw.labels:
                     actions.unlabel.append(u'merge_commit')
-
-        '''
-        # BAD PR
-        if iw.is_pullrequest() and self.meta['is_bad_pr']:
-            actions.cancel_ci = True
-        '''
 
         # @YOU IN COMMIT MSGS
         if iw.is_pullrequest():
@@ -1060,42 +1024,6 @@ class AnsibleTriage(DefaultTriager):
                 )
                 if comment not in actions.comments:
                     actions.comments.append(comment)
-
-        # shippable failures shippable_test_result
-        if iw.is_pullrequest() and not self.meta[u'is_bad_pr']:
-            if self.meta[u'ci_state'] == u'failure' and \
-                    self.meta[u'needs_testresult_notification']:
-                tvars = {
-                    u'submitter': iw.submitter,
-                    u'data': self.meta[u'shippable_test_results']
-                }
-
-                try:
-                    comment = self.render_boilerplate(
-                        tvars,
-                        boilerplate='shippable_test_result'
-                    )
-                except Exception as e:
-                    logging.debug(e)
-                    if C.DEFAULT_BREAKPOINTS:
-                        logging.debug('breakpoint!')
-                        import epdb; epdb.st()
-                    else:
-                        raise Exception(to_text(e))
-
-                # https://github.com/ansible/ansibullbot/issues/423
-                if len(comment) < 65536:
-                    if comment not in actions.comments:
-                        actions.comments.append(comment)
-
-        # https://github.com/ansible/ansibullbot/issues/293
-        if iw.is_pullrequest():
-            if not self.meta[u'has_shippable'] and not self.meta[u'has_travis']:
-                if u'needs_ci' not in iw.labels:
-                    actions.newlabel.append(u'needs_ci')
-            else:
-                if u'needs_ci' in iw.labels:
-                    actions.unlabel.append(u'needs_ci')
 
         # MODULE CATEGORY LABELS
         # {u'cloud/amazon': u'aws', u'cloud/azure': u'azure', u'network': u'networking', u'cloud/google': u'gce', u'windows': u'windows', u'cloud/openstack': u'openstack', u'cloud/digital_ocean': u'digital_ocean', u'cloud': u'cloud'}
@@ -1364,17 +1292,6 @@ class AnsibleTriage(DefaultTriager):
                 if label_name in iw.labels:
                     actions.unlabel.append(label_name)
 
-        if iw.is_pullrequest():
-
-            # https://github.com/ansible/ansibullbot/issues/312
-            # https://github.com/ansible/ansibullbot/issues/418
-            if self.meta[u'ci_verified']:
-                if u'ci_verified' not in iw.labels:
-                    actions.newlabel.append(u'ci_verified')
-            else:
-                if u'ci_verified' in iw.labels:
-                    actions.unlabel.append(u'ci_verified')
-
         # https://github.com/ansible/ansibullbot/issues/367
         if self.meta[u'is_backport']:
             if u'backport' not in iw.labels:
@@ -1416,16 +1333,6 @@ class AnsibleTriage(DefaultTriager):
             else:
                 if u'needs_repo' in iw.labels:
                     actions.unlabel.append(u'needs_repo')
-
-        # https://github.com/ansible/ansibullbot/issues/458
-        if not self.meta[u'is_bad_pr']:
-            if iw.is_pullrequest():
-                if self.meta[u'ci_stale']:
-                    if u'stale_ci' not in iw.labels:
-                        actions.newlabel.append(u'stale_ci')
-                else:
-                    if u'stale_ci' in iw.labels:
-                        actions.unlabel.append(u'stale_ci')
 
         # https://github.com/ansible/ansibullbot/issues/589
         if not self.meta[u'is_bad_pr']:
@@ -1492,25 +1399,6 @@ class AnsibleTriage(DefaultTriager):
                 actions.newlabel.append(u'filament')
             if iw.age.days >= 5:
                 actions.close = True
-
-        # https://github.com/ansible/ansibullbot/pull/664
-        if self.meta[u'needs_rebuild']:
-            actions.rebuild = True
-            if u'stale_ci' in actions.newlabel:
-                actions.newlabel.remove(u'stale_ci')
-            if u'stale_ci' in iw.labels:
-                actions.unlabel.append(u'stale_ci')
-        elif self.meta[u'needs_rebuild_failed']:
-            actions.rebuild_failed = True
-            if u'stale_ci' in actions.newlabel:
-                actions.newlabel.remove(u'stale_ci')
-            if u'stale_ci' in iw.labels:
-                actions.unlabel.append(u'stale_ci')
-
-        # https://github.com/ansible/ansibullbot/issues/640
-        if not self.meta[u'is_bad_pr']:
-            if not self.meta[u'needs_rebuild'] and self.meta[u'admin_merge']:
-                actions.merge = True
 
         # https://github.com/ansible/ansibullbot/issues/785
         if iw.is_pullrequest():
@@ -1993,7 +1881,6 @@ class AnsibleTriage(DefaultTriager):
                 self,
                 iw,
                 self.meta,
-                shippable=self.SR
             )
         )
 
@@ -2007,11 +1894,6 @@ class AnsibleTriage(DefaultTriager):
         )
 
         self.meta.update(get_notification_facts(iw, self.meta))
-
-        # ci_verified and test results
-        self.meta.update(
-            get_shippable_run_facts(iw, self.meta, shippable=self.SR)
-        )
 
         # needsinfo?
         self.meta[u'is_needs_info'] = is_needsinfo(self, iw)
@@ -2072,30 +1954,6 @@ class AnsibleTriage(DefaultTriager):
         # filament
         self.meta.update(get_filament_facts(iw, self.meta))
 
-        # ci
-        self.meta.update(get_ci_facts(iw))
-
-        # ci rebuilds
-        self.meta.update(get_rebuild_facts(iw, self.meta))
-
-        # ci rebuild + merge
-        self.meta.update(
-            get_rebuild_merge_facts(
-                iw,
-                self.meta,
-                self.ansible_core_team,
-            )
-        )
-
-        # ci rebuild requested?
-        self.meta.update(
-            get_rebuild_command_facts(
-                iw,
-                self.meta,
-                self.ansible_core_team,
-                self.SR
-            )
-        )
 
         # first time contributor?
         self.meta.update(get_contributor_facts(iw))
@@ -2434,40 +2292,6 @@ class AnsibleTriage(DefaultTriager):
             )
             logging.info('close migrated: %s' % mi.html_url)
             mi.instance.edit(state=u'closed')
-
-        if actions.rebuild:
-            runid = self.meta.get(u'ci_run_number')
-            if runid:
-                logging.info('Rebuilding CI %s for #%s' % (runid, iw.number))
-                self.SR.rebuild(runid, issueurl=iw.html_url)
-            else:
-                logging.error(
-                    u'rebuild: no shippable runid for {}'.format(iw.number)
-                )
-        elif actions.rebuild_failed:
-            runid = self.meta.get(u'ci_run_number')
-            if runid:
-                logging.info('Rebuilding CI %s for #%s' % (runid, iw.number))
-                self.SR.rebuild_failed(runid, issueurl=iw.html_url)
-            else:
-                logging.error(
-                    u'rebuild: no shippable runid for {}'.format(iw.number)
-                )
-
-
-        if actions.cancel_ci:
-            runid = self.meta.get(u'ci_run_number')
-            if runid:
-                logging.info('Cancelling CI %s for #%s' % (runid, iw.number))
-                self.SR.cancel(runid, issueurl=iw.html_url)
-            else:
-                logging.error(
-                    u'cancel: no shippable runid for {}'.format(iw.number)
-                )
-
-        if actions.cancel_ci_branch:
-            branch = iw.pullrequest.head.repo
-            self.SR.cancel_branch_runs(branch)
 
     def render_comment(self, boilerplate=None):
         """Renders templates into comments using the boilerplate as filename"""
