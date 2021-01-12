@@ -291,17 +291,22 @@ class AnsibleTriage(DefaultTriager):
         repo = u'https://github.com/' + to_text(self.collection)
         self.gitrepo = GitRepoWrapper(cachedir=self.cachedir_base, repo=repo, commit=self.ansible_commit, rebase=update_checkouts)
 
-        # load botmeta ... once!
-        logging.info('ansible triager loading botmeta')
-        self.load_botmeta()
-
         # set the indexers
         logging.info('creating version indexer')
-        self.version_indexer = AnsibleVersionIndexer(checkoutdir=self.gitrepo.checkoutdir)
+        self.version_indexer = AnsibleVersionIndexer(
+            checkoutdir=self.gitrepo.checkoutdir,
+            commit=self.ansible_commit
+        )
+
+        logging.info('creating file indexer')
+        self.file_indexer = FileIndexer(
+            botmetafile=self.botmetafile,
+            gitrepo=self.gitrepo,
+        )
 
         logging.info('creating module indexer')
         self.module_indexer = ModuleIndexer(
-            botmeta=self.botmeta,
+            botmetafile=self.botmetafile,
             gh_client=self.gqlc,
             cachedir=self.cachedir_base,
             gitrepo=self.gitrepo,
@@ -310,7 +315,7 @@ class AnsibleTriage(DefaultTriager):
 
         logging.info('creating component matcher')
         self.component_matcher = AnsibleComponentMatcher(
-            gitrepo=gitrepo,
+            gitrepo=self.gitrepo,
             botmetafile=self.botmetafile,
             email_cache=self.module_indexer.emails_cache,
         )
@@ -354,15 +359,6 @@ class AnsibleTriage(DefaultTriager):
                 self._ansible_core_team = self.get_core_team(u'ansible', teams)
 
         return [x for x in self._ansible_core_team if x not in C.DEFAULT_BOTNAMES]
-
-    def load_botmeta(self):
-        if self.botmetafile is not None:
-            with open(self.botmetafile, 'rb') as f:
-                rdata = f.read()
-        else:
-            rdata = self.gitrepo.get_file_content(u'.github/BOTMETA.yml')
-        logging.info('ansible triager [re]loading botmeta')
-        self.botmeta = BotMetadataParser.parse_yaml(rdata)
 
     def get_rate_limit(self):
         return self.gh.get_rate_limit().raw_data
