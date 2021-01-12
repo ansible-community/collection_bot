@@ -47,14 +47,19 @@ class AzurePipelinesCI(BaseCI):
         self._stages = None
         self._artifacts = None
         self.last_run = None
+        self.created_at = None
 
-        if self.state and self.build_id and self.jobs:
-            created_at = min(
+        try:
+            self.created_at = min(
                 (strip_time_safely(j['startTime']) for j in self.jobs if j['startTime'] is not None)
             )
+        except ValueError:
+            self.created_at = self.updated_at
+
+        if self.state and self.build_id and self.jobs:
             self.last_run = {
                 'state': self.state,
-                'created_at': created_at,
+                'created_at': pytz.utc.localize(self.created_at),
                 'updated_at': pytz.utc.localize(self.updated_at),
                 'run_id': self.build_id,
             }
@@ -83,13 +88,33 @@ class AzurePipelinesCI(BaseCI):
     def jobs(self):
         if self._jobs is None:
             if self.build_id:
-                # FIXME cache this? We need lastChangedOn always anyway...
+                if not os.path.isdir(self._cachedir):
+                    os.makedirs(self._cachedir)
+                cache_file = os.path.join(self._cachedir, u'timeline_%s.pickle' % self.build_id)
+
                 resp = fetch(TIMELINE_URL_FMT % self.build_id)
-                check_response(resp)
-                data = resp.json()
-                self._jobs = [r for r in data['records'] if r['type'] == 'Job']
-                self._updated_at = strip_time_safely(data['lastChangedOn'])  # FIXME
-                self._stages = [r for r in data['records'] if r['type'] == 'Stage']  # FIXME
+                if resp is None:
+                    data = None
+                    if os.path.isfile(cache_file):
+                        logging.info(u'timeline was probably removed, load it from cache')
+                        with open(cache_file, 'rb') as f:
+                            data = pickle_load(f)
+                else:
+                    data = resp.json()
+                    data = (strip_time_safely(data['lastChangedOn']), data)
+                    logging.info(u'writing %s' % cache_file)
+                    with open(cache_file, 'wb') as f:
+                        pickle_dump(data, f)
+
+                if data is not None:
+                    data = data[1]
+                    self._jobs = [r for r in data['records'] if r['type'] == 'Job']
+                    self._updated_at = strip_time_safely(data['lastChangedOn'])  # FIXME
+                    self._stages = [r for r in data['records'] if r['type'] == 'Stage']  # FIXME
+                else:
+                    self._jobs = []
+                    self._updated_at = strip_time_safely('1970-01-01')
+                    self._stages = []
             else:
                 self._jobs = []
         return self._jobs
@@ -134,14 +159,14 @@ class AzurePipelinesCI(BaseCI):
 
     def get_last_full_run_date(self):
         # FIXME fix the method name, it makes sense for shippable but not for azp
-        if self.state is None:
+        if self.state is None and self.build_id is None:
             raise NoCIError
         # FIXME pending?
         #if self.state == u'pending':
         #    raise NoCIError
-        return min(
-            (strip_time_safely(j['startTime']) for j in self.jobs if j['startTime'] is not None)
-        )
+        if self.created_at is None:
+            raise NoCIError
+        return self.created_at
 
     @property
     def artifacts(self):
@@ -164,15 +189,15 @@ class AzurePipelinesCI(BaseCI):
                     logging.info(u'fetching artifacts: stale, no previous data')
 
                 resp = fetch(ARTIFACTS_URL_FMT % self.build_id)
-                check_response(resp)
-                data = [a for a in resp.json()['value'] if a['name'].startswith('Bot')]
-                data = (self.updated_at, data)
+                if resp is not None:
+                    data = [a for a in resp.json()['value'] if a['name'].startswith('Bot')]
+                    data = (self.updated_at, data)
 
-                logging.info(u'writing %s' % cache_file)
-                with open(cache_file, 'wb') as f:
-                    pickle_dump(data, f)
-
-            self._artifacts = data[1]
+                    logging.info(u'writing %s' % cache_file)
+                    with open(cache_file, 'wb') as f:
+                        pickle_dump(data, f)
+            if data:
+                self._artifacts = data[1]
 
         return self._artifacts
 
@@ -194,18 +219,18 @@ class AzurePipelinesCI(BaseCI):
                 logging.info(u'fetching artifacts: stale, no previous data')
 
             resp = fetch(url, stream=True)
-            check_response(resp)
-            with BytesIO() as data:
-                for chunk in resp.iter_content(chunk_size=128):
-                    data.write(chunk)
-                artifact_zip = ZipFile(data)
+            if resp is not None:
+                with BytesIO() as data:
+                    for chunk in resp.iter_content(chunk_size=128):
+                        data.write(chunk)
+                    artifact_zip = ZipFile(data)
 
-                artifact_data = []
-                for fn in artifact_zip.namelist():
-                    if 'ansible-test-' not in fn:
-                        continue
-                    with artifact_zip.open(fn) as f:
-                        artifact_data.append(json.load(f))
+                    artifact_data = []
+                    for fn in artifact_zip.namelist():
+                        if 'ansible-test-' not in fn:
+                            continue
+                        with artifact_zip.open(fn) as f:
+                            artifact_data.append(json.load(f))
 
                 data = (self.updated_at, artifact_data)
                 logging.info(u'writing %s' % cache_file)

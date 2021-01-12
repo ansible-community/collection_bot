@@ -57,9 +57,9 @@ from ansibullbot.utils.iterators import RepoIssuesIterator
 from ansibullbot.utils.moduletools import ModuleIndexer
 from ansibullbot.utils.timetools import strip_time_safely
 from ansibullbot.utils.version_tools import AnsibleVersionIndexer
-from ansibullbot.utils.file_tools import FileIndexer
+#from ansibullbot.utils.file_tools import FileIndexer
 from ansibullbot.utils.migrator import IssueMigrator
-from ansibullbot.utils.shippable_api import ShippableRuns
+#from ansibullbot.utils.shippable_api import ShippableRuns
 from ansibullbot.utils.systemtools import run_command
 from ansibullbot.utils.receiver_client import post_to_receiver
 from ansibullbot.utils.webscraper import GithubWebScraper
@@ -206,7 +206,7 @@ class AnsibleTriage(DefaultTriager):
             )
         return self._gws
 
-    def __init__(self, args=None):
+    def __init__(self, args=None, update_checkouts=True):
 
         super(AnsibleTriage, self).__init__()
 
@@ -289,27 +289,22 @@ class AnsibleTriage(DefaultTriager):
         # clone repo
         logging.info(u'creating gitrepowrapper')
         repo = u'https://github.com/' + to_text(self.collection)
-        gitrepo = GitRepoWrapper(cachedir=self.cachedir_base, repo=repo, commit=self.ansible_commit)
+        self.gitrepo = GitRepoWrapper(cachedir=self.cachedir_base, repo=repo, commit=self.ansible_commit, rebase=update_checkouts)
+
+        # load botmeta ... once!
+        logging.info('ansible triager loading botmeta')
+        self.load_botmeta()
 
         # set the indexers
         logging.info('creating version indexer')
-        self.version_indexer = AnsibleVersionIndexer(
-            checkoutdir=gitrepo.checkoutdir,
-            commit=self.ansible_commit
-        )
-
-        logging.info('creating file indexer')
-        self.file_indexer = FileIndexer(
-            botmetafile=self.botmetafile,
-            gitrepo=gitrepo,
-        )
+        self.version_indexer = AnsibleVersionIndexer(checkoutdir=self.gitrepo.checkoutdir)
 
         logging.info('creating module indexer')
         self.module_indexer = ModuleIndexer(
-            botmetafile=self.botmetafile,
+            botmeta=self.botmeta,
             gh_client=self.gqlc,
             cachedir=self.cachedir_base,
-            gitrepo=gitrepo,
+            gitrepo=self.gitrepo,
             commits=not self.ignore_module_commits
         )
 
@@ -359,6 +354,15 @@ class AnsibleTriage(DefaultTriager):
                 self._ansible_core_team = self.get_core_team(u'ansible', teams)
 
         return [x for x in self._ansible_core_team if x not in C.DEFAULT_BOTNAMES]
+
+    def load_botmeta(self):
+        if self.botmetafile is not None:
+            with open(self.botmetafile, 'rb') as f:
+                rdata = f.read()
+        else:
+            rdata = self.gitrepo.get_file_content(u'.github/BOTMETA.yml')
+        logging.info('ansible triager [re]loading botmeta')
+        self.botmeta = BotMetadataParser.parse_yaml(rdata)
 
     def get_rate_limit(self):
         return self.gh.get_rate_limit().raw_data
