@@ -1111,25 +1111,6 @@ class AnsibleTriage(DefaultTriager):
                                     cl not in actions.newlabel:
                                 actions.newlabel.append(cl)
 
-        if self.meta[u'is_pullrequest'] and self.meta[u'is_backport']:
-            version = self.version_indexer.strip_ansible_version(self.meta[u'base_ref'])
-            if version:
-                for label in self.valid_labels:
-                    if label.startswith(u'affects_'):
-                        if label.endswith(version):
-                            if label not in iw.labels:
-                                actions.newlabel.append(label)
-                        elif label in iw.labels:
-                            actions.unlabel.append(label)
-        elif self.meta[u'ansible_label_version']:
-            vlabels = [x for x in iw.labels if x.startswith(u'affects_')]
-            if not vlabels:
-                label = u'affects_%s' % self.meta[u'ansible_label_version']
-                if label not in iw.labels:
-                    # do not re-add version labels
-                    if not iw.history.was_unlabeled(label):
-                        actions.newlabel.append(label)
-
         if self.meta[u'issue_type']:
             label = self.ISSUE_TYPES.get(self.meta[u'issue_type'])
             if label and label not in iw.labels:
@@ -1828,27 +1809,6 @@ class AnsibleTriage(DefaultTriager):
             self.meta[u'is_issue'] = False
             self.meta[u'is_pullrequest'] = True
 
-        # get ansible version
-        if iw.is_issue():
-            self.meta[u'ansible_version'] = \
-                self.get_ansible_version_by_issue(iw)
-        else:
-            # use the submit date's current version
-            self.meta[u'ansible_version'] = \
-                self.version_indexer.version_by_date(iw.created_at)
-
-        # https://github.com/ansible/ansible/issues/21207
-        if not self.meta[u'ansible_version']:
-            # fallback to version by date
-            self.meta[u'ansible_version'] = \
-                self.version_indexer.version_by_date(iw.created_at)
-
-        self.meta[u'ansible_label_version'] = \
-            self.get_version_major_minor(
-                version=self.meta[u'ansible_version']
-            )
-        logging.info('ansible version: %s' % self.meta[u'ansible_version'])
-
         # what is this?
         self.meta[u'is_migrated'] = False
         # what component(s) is this about?
@@ -2233,52 +2193,6 @@ class AnsibleTriage(DefaultTriager):
             tfacts[u'maintainer_triaged'] = True
 
         return tfacts
-
-    def get_ansible_version_by_issue(self, iw):
-        aversion = None
-
-        rawdata = iw.get_template_data().get(u'ansible version', u'')
-        if rawdata:
-            aversion = self.version_indexer.strip_ansible_version(rawdata)
-
-        if not aversion or aversion == u'devel':
-            aversion = self.version_indexer.version_by_date(
-                iw.instance.created_at
-            )
-
-        if aversion:
-            if aversion.endswith(u'.'):
-                aversion += u'0'
-
-        # re-run for versions ending with .x
-        if aversion:
-            if aversion.endswith(u'.x'):
-                aversion = self.version_indexer.strip_ansible_version(aversion)
-
-        if self.version_indexer.is_valid_version(aversion) and \
-                aversion is not None:
-            return aversion
-        else:
-
-            # try to go through the submitter's comments and look for the
-            # first one that specifies a valid version
-            cversion = None
-            for comment in iw.current_comments:
-                if comment.user.login != iw.instance.user.login:
-                    continue
-                xver = self.version_indexer.strip_ansible_version(comment.body)
-                if self.version_indexer.is_valid_version(xver):
-                    cversion = xver
-                    break
-
-            # use the comment version
-            aversion = cversion
-
-        return aversion
-
-    def get_version_major_minor(self, version):
-        assert version is not None
-        return get_major_minor(version)
 
     def execute_actions(self, iw, actions):
         """Turns the actions into API calls"""
