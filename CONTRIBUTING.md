@@ -18,8 +18,8 @@ Usage of unicode strings is required.
     * or use `sudo touch /var/log/ansibullbot.log && sudo chmod 777 /var/log/ansibullbot.log`
 6. Create the config file, copy [`examples/ansibullbot.cfg`](https://github.com/ansible/ansibullbot/blob/master/examples/ansibullbot.cfg) to one of these paths:
     * `~/.ansibullbot.cfg`
-    * `$CWD/ansibullot.cfg`
-    * `/etc/ansibullot/ansibullbot.cfg`
+    * `$CWD/ansibullbot.cfg`
+    * `/etc/ansibullbot/ansibullbot.cfg`
     * define `ANSIBULLBOT_CONFIG` environment variable where the configuration file is located
 7. fill in the credentials
 
