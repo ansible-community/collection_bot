@@ -517,7 +517,7 @@ def get_supported_by(self, issuewrapper, meta):
     '''
 
     # And Collection running the bot is assumed to be community (not core, certified, network, etc)
-    if self.collection:
+    if self.repo:
         return (u'community')
 
     supported_by = u'core'
