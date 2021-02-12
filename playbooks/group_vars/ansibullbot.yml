@@ -10,8 +10,13 @@ ansibullbot_options:
   - skip_no_update
   - skip_no_update_timeout
   - verbose
+  - collection ansible-collections/community.general
+  - ignore_module_commits
 
 ansibullbot_receiver_enabled: true
+ansibullbot_github_username: ansibullbot
+ansibullbot_repo_url: https://github.com/ansible-community/collection_bot
+ansibullbot_branch: main
 
 ansibullbot_github_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
