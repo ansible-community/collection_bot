@@ -205,6 +205,15 @@ DEFAULT_BOT_NAMES = get_config(
     value_type='list'
 )
 
+DEFAULT_REPOS = get_config(
+    p,
+    DEFAULTS,
+    'repos',
+    '%s_REPOS' % PROG_NAME.upper(),
+    ['ansible/ansible'],
+    value_type='list'
+)
+
 # the sqlite database unc
 DEFAULT_DATABASE_UNC = get_config(
     p,

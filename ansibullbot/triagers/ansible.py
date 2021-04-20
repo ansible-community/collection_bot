@@ -97,14 +97,6 @@ from ansibullbot.triagers.plugins.docs_info import get_docs_facts
 VALID_CI_PROVIDERS = frozenset(('azp',))
 
 
-# NOTE if we want to support more repos for the ansible triager
-# using --repos and/or --skiprepo all occurrences of hardcoded
-# "ansible/ansible" need to be fixed
-REPOS = [
-    'ansible/ansible',
-]
-
-
 def get_version_major_minor(vstring):
     '''Return an X.Y version'''
     lver = LooseVersion(vstring)
@@ -588,7 +580,9 @@ class AnsibleTriage(DefaultTriager):
         if repopath:
             repopaths = [repopath]
         else:
-            repopaths = [x for x in REPOS]
+            # TODO: should this be self.repos because otherwise specifying
+            # --repo would not be effective
+            repopaths = [x for x in C.DEFAULT_REPOS]
 
         for rp in repopaths:
             if issuenums and len(issuenums) <= 10:
@@ -1619,7 +1613,7 @@ class AnsibleTriage(DefaultTriager):
     def collect_repos(self):
         '''Populate the local cache of repos'''
         logging.info('start collecting repos')
-        for repo in REPOS:
+        for repo in C.DEFAULT_REPOS:
             # skip repos based on args
             if self.repo and self.repo != repo:
                 continue
@@ -2310,7 +2304,7 @@ class AnsibleTriage(DefaultTriager):
                              " (NOTE: only useful if you have commit access to" \
                              " the repo in question.)"
 
-        parser.add_argument("--repo", "-r", type=str, choices=REPOS,
+        parser.add_argument("--repo", "-r", type=str, choices=C.DEFAULT_REPOS,
                             help="Github repo to triage (defaults to all)")
 
         parser.add_argument("--skip_no_update", action="store_true",
