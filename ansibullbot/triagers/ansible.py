@@ -293,6 +293,9 @@ class AnsibleTriage(DefaultTriager):
 
     @property
     def ansible_core_team(self):
+        """
+        TODO: This is hardcoded for ansible/ansible repo and not appropriate (or necessary) for collection repos.
+              Fix this to be generic instead ?
         if self._ansible_core_team is None:
             teams = [
                 'ansible-commit',
@@ -300,6 +303,8 @@ class AnsibleTriage(DefaultTriager):
             ]
             self._ansible_core_team = self.get_core_team('ansible', teams)
         return [x for x in self._ansible_core_team if x not in self.BOTNAMES]
+        """
+        return []
 
     def load_botmeta(self):
         if self.botmetafile is not None:
