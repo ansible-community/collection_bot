@@ -1,6 +1,30 @@
 import logging
 import re
 
+# Known possible Ansible plugin types
+PLUGIN_TYPES = [
+    'action',
+    'become',
+    'cache',
+    'callback',
+    'cliconf',
+    'connection',
+    'doc_fragments',
+    'filter',
+    'httpapi',
+    'inventory',
+    'lookup',
+    'modules',
+    'module_utils',
+    'netconf',
+    'shell',
+    'strategy',
+    'terminal',
+    'test',
+    'vars'
+]
+PLUGIN_PATTERN = re.compile('.*(/lib/ansible|/plugins)/(%s)' % '|'.join(PLUGIN_TYPES))
+
 
 def get_component_match_facts(iw, component_matcher, valid_labels):
     '''High level abstraction for matching components to repo files'''
@@ -112,25 +136,29 @@ def get_component_match_facts(iw, component_matcher, valid_labels):
             if y in cmeta['component_notifiers']:
                 cmeta['component_notifiers'].remove(y)
 
+    # is it a plugin?
+    if [x for x in CM_MATCHES if re.match(PLUGIN_PATTERN, x['repo_filename'])]:
+        cmeta['is_plugin'] = True
+
     # is it a module ... or two?
-    if [x for x in CM_MATCHES if 'lib/ansible/modules' in x['repo_filename']]:
-        cmeta['is_module'] = True
-        if len([x for x in CM_MATCHES if 'lib/ansible/modules' in x['repo_filename']]) > 1:
+    module_paths = ['/lib/ansible/modules/', '/plugins/modules/']
+    for match in CM_MATCHES:
+        cmeta['module_match'] = [x for x in module_paths if x in match['repo_filename']]
+        if cmeta['module_match']:
+            cmeta['is_module'] = True
+
+        if len(cmeta['module_match']) > 1:
             cmeta['is_multi_module'] = True
-        cmeta['is_plugin'] = True
-        cmeta['module_match'] = [x for x in CM_MATCHES if 'lib/ansible/modules' in x['repo_filename']]
 
-    # is it a plugin?
-    if [x for x in CM_MATCHES if 'lib/ansible/plugins' in x['repo_filename']]:
-        cmeta['is_plugin'] = True
-
-    # is it a plugin?
-    if [x for x in CM_MATCHES if 'lib/ansible/plugins/action' in x['repo_filename']]:
+    # is it an action plugin ?
+    if [x for x in CM_MATCHES if '/plugins/action/' in x['repo_filename']]:
         cmeta['is_action_plugin'] = True
 
     # is it a module util?
-    if [x for x in CM_MATCHES if 'lib/ansible/module_utils' in x['repo_filename']]:
-        cmeta['is_module_util'] = True
+    util_paths = ['/lib/ansible/module_utils', '/plugins/module_utils/']
+    for match in CM_MATCHES:
+        if [x for x in util_paths if x in match['repo_filename']]:
+            cmeta['is_module_util'] = True
 
     if iw.is_pullrequest():
         if iw.new_modules:
