@@ -1325,6 +1325,8 @@ class AnsibleTriage(DefaultTriager):
                     if 'needs_maintainer' in iw.labels:
                         actions.unlabel.append('needs_maintainer')
 
+        """
+        FORK: Support labels are not used outside of ansible/ansible
         # https://github.com/ansible/ansibullbot/issues/608
         if not self.meta['is_bad_pr']:
             if not self.meta.get('component_support'):
@@ -1343,6 +1345,7 @@ class AnsibleTriage(DefaultTriager):
             for ocs_label in other_cs_labels:
                 if ocs_label not in cs_labels:
                     actions.unlabel.append(ocs_label)
+        """
 
         if not self.meta['stale_reviews']:
             if 'stale_review' in iw.labels:
