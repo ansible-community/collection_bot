@@ -820,6 +820,8 @@ class AnsibleTriage(DefaultTriager):
                 if 'owner_pr' in iw.labels:
                     actions.unlabel.append('owner_pr')
 
+        """
+        FORK: PRs outside of ansible/ansible are expected to be community_review so we don't need to add these.
         # REVIEWS
         for rtype in ['core_review', 'committer_review', 'community_review']:
             if self.meta[rtype]:
@@ -828,6 +830,7 @@ class AnsibleTriage(DefaultTriager):
             else:
                 if rtype in iw.labels:
                     actions.unlabel.append(rtype)
+        """
 
         # WIPs
         if iw.is_pullrequest():
