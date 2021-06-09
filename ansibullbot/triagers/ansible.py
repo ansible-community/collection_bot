@@ -1264,20 +1264,25 @@ class AnsibleTriage(DefaultTriager):
         self.meta['is_issue'] = iw.is_issue()
         self.meta['is_pullrequest'] = iw.is_pullrequest()
 
-        # get ansible version
-        if iw.is_issue():
-            self.meta['ansible_version'] = self.version_indexer.version_by_issue(iw)
-        else:
-            # use the submit date's current version
-            self.meta['ansible_version'] = self.version_indexer.version_by_date(iw.created_at)
+        self.meta['ansible_version'] = None
+        self.meta['ansible_label_version'] = None
 
-        # https://github.com/ansible/ansible/issues/21207
-        if not self.meta['ansible_version']:
-            # fallback to version by date
-            self.meta['ansible_version'] = self.version_indexer.version_by_date(iw.created_at)
+        # When working with ansible/ansible, determine the version to eventually set the "affects_%s" label
+        if iw.repo_full_name == "ansible/ansible":
+            # get ansible version
+            if iw.is_issue():
+                self.meta['ansible_version'] = self.version_indexer.version_by_issue(iw)
+            else:
+                # use the submit date's current version
+                self.meta['ansible_version'] = self.version_indexer.version_by_date(iw.created_at)
 
-        self.meta['ansible_label_version'] = self.version_indexer.get_version_major_minor(self.meta['ansible_version'])
-        logging.info('ansible version: %s' % self.meta['ansible_version'])
+            # https://github.com/ansible/ansible/issues/21207
+            if not self.meta['ansible_version']:
+                # fallback to version by date
+                self.meta['ansible_version'] = self.version_indexer.version_by_date(iw.created_at)
+
+            self.meta['ansible_label_version'] = self.version_indexer.get_version_major_minor(self.meta['ansible_version'])
+            logging.info('ansible version: %s' % self.meta['ansible_version'])
 
         # what component(s) is this about?
         self.meta.update(
