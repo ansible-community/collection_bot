@@ -63,7 +63,7 @@ class GitRepoWrapper:
 
     @property
     def module_files(self):
-        return [x for x in self._files if x.startswith('lib/ansible/modules')]
+        return [x for x in self._files if x.startswith('plugins/modules')]
 
     def create_checkout(self):
         """checkout ansible"""
@@ -157,27 +157,12 @@ class GitRepoWrapper:
 
     def get_files(self, force=False):
         '''Cache a list of filenames in the checkout'''
-        if self.isgit:
-            if not self._files or force:
-                cmd = f'cd {self.checkoutdir}; git ls-files'
-                logging.debug(cmd)
-                (rc, so, se) = run_command(cmd)
-                files = to_text(so).split('\n')
-                files = [x.strip() for x in files if x.strip()]
-                if self.context:
-                    self._files = [x for x in files if self.context in files]
-                self._files = files
-        else:
-            self._files = []
-            cmd = f'cd {self.checkoutdir}; find .'
-            logging.debug(cmd)
-            (rc, so, se) = run_command(cmd)
-            filepaths = to_text(so).split('\n')
-            for fp in filepaths:
-                if not fp.startswith('./'):
-                    continue
-                fp = fp.replace('./', '', 1)
-                self._files.append(fp)
+        if not self._files or force:
+            for root, directories, filenames in os.walk(self.checkoutdir):
+                for filename in filenames:
+                    naive_fpath = os.path.realpath(os.path.join(root, filename))
+                    fpath = naive_fpath.replace(self.checkoutdir + u'/', u'')
+                    self._files.append(fpath)
 
     def get_files_by_commit(self, commit):
         if commit not in self.files_by_commit:
