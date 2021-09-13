@@ -41,6 +41,15 @@ class GitRepoWrapper:
         return filename in self.files
 
     @property
+    def branch(self):
+        """Retrieves the branch of a checkout"""
+        cmd = "cd %s ; git rev-parse --abbrev-ref HEAD" % self.checkoutdir
+        logging.debug(cmd)
+        (rc, so, se) = run_command(cmd, env={'GIT_TERMINAL_PROMPT': 0, 'GIT_ASKPASS': '/bin/echo'})
+        so = to_text(so).strip()
+        return so
+
+    @property
     def isgit(self):
         return not self.repo.endswith('.tar.gz')
 
