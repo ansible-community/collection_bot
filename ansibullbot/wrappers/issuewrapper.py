@@ -387,6 +387,11 @@ class IssueWrapper:
         return self.instance.user.login
 
     @property
+    def is_bot(self):
+        """Returns True if the user is a GitHub Bot account or False"""
+        return self.instance.user.type == "Bot"
+
+    @property
     def pullrequest(self):
         if not self._pr:
             logging.debug('@pullrequest.get_pullrequest #%s' % self.number)
