@@ -1161,7 +1161,7 @@ class AnsibleComponentMatcher:
         }
 
         if self.gitrepo.exists(filename):
-            meta['repo_link'] = '%s/blob/devel/%s' % (self.gitrepo.repo, filename)
+            meta['repo_link'] = '%s/blob/%s/%s' % (self.gitrepo.repo, self.gitrepo.branch, filename)
 
         if filename.startswith('collection:'):
             fqcn = filename.split(':')[1]
