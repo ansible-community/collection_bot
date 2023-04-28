@@ -404,3 +404,6 @@ tests/fixtures/ansible-*.tar.gz
 *.retry
 *.xml
 /issues/
+
+# Pyenv dir
+/prod
