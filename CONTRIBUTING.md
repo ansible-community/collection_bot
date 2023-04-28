@@ -19,7 +19,7 @@ Collection Bot is compatible with Python 3.8+.
     * `/etc/ansibullbot/ansibullbot.cfg`
     * define `ANSIBULLBOT_CONFIG` environment variable where the configuration file is located.
 7. Fill in the credentials.
-8. Optionally: create a cache directory, for example, with `mkdir /tmp/cache`. Adjust permissions, if needed.
+8. Optionally: create a cache directory, for example, with `mkdir /tmp/cache`. Adjust permissions if needed.
 
 ## Testing your changes
 
