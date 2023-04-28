@@ -96,7 +96,9 @@ Once the pull request labeled with [`shipit`](#label-shipit), the module will be
 
 #### Existing Modules
 
-Members of the Ansible Core Team typically do all the maintenance on these modules, so only they can approve changes.
+Existing community modules are developed, maintained and supported by the community. If you are a module maintainer, a maintainer of a module in the same namespace, or a core team member use the [`shipit`](#cmd-shipit) command to approve the pull request. The bot will wait for the pull request being labeled with [`shipit`](#label-shipit), then automerge.
+
+:information_source: If you are maintainer of the module or maintainer of a module in the same namespace, only one [`shipit`](#cmd-shipit) is required.
 
 #### Non-module changes
 
