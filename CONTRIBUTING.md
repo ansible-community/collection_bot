@@ -56,7 +56,7 @@ So the command might be:
 
 ## Testing changes related to a single label
 
-**TBD: Needs to be checked if relevant**
+**TBD: Needs to be checked if this info is still relevant**
 
 The `--id` parameter can take a path to a script. The `scripts` directory is full of scripts that will return json'ified lists of issue numbers. One example is the `scripts/list_open_issues_with_needs_info.sh` script which scrapes the github UI for any issues with the needs_info label. Here's how you might use that to test your changes to ansibullbot against all issues with needs_info ...
 
@@ -70,7 +70,7 @@ The `--id` parameter can take a path to a script. The `scripts` directory is ful
 
 ## Updating Ansible Playbooks and Roles used by Ansibullbot ##
 
-**TBD: Needs to be checked if relevant**
+**TBD: Needs to be checked if this info is still relevant**
 
 Ansibullbot is deployed and managed using [Ansible](https://www.ansible.com) and [Ansible Tower](https://www.ansible.com/tower). There are several roles used by Ansibullbot, each of which is a [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules).
 
