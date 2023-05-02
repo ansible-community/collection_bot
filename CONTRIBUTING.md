@@ -66,7 +66,68 @@ The `--id` parameter can take a path to a script. The `scripts` directory is ful
 
 ## Running the bot as a service
 
-**TBD**
+**IMPORTANT:** This wasn't tested. It was derived from the current server configuration using common sense and normal possible course of events to make it up and running. If you're deploying a new instance, please improve this document along the way.
+
+1. Set up things and run the bot in testing mode as described in the previous sections.
+2. Create the `/var/lib/ansibot` directory.
+3. Move/copy the bot's repo you used for testing to `/var/lib/ansibot/ansibullbot`.
+4. If you succeeded, create a non-privileged user to run the bot as a service.
+5. Put the config file to `/var/lib/ansibot/.ansibullbot.cfg`.
+6. Make the user an owner of `/var/lib/ansibot` recursively.
+7. Make sure the user has permissions to write to the log file specified in unit files below.
+8. Run the bot in testing mode from that directory again.
+9. Create systemd units for `ansibullbot` and `ansibullbot-receiver`. Samples of unit files:
+
+```bash
+# cat /etc/systemd/system/ansibullbot.service
+
+# Ansible managed
+[Unit]
+Description=Ansibullbot
+After=syslog.target
+
+[Service]
+Type=simple
+User=ansibot
+Group=ansibot
+
+Restart=on-failure
+
+StandardOutput=null
+StandardError=null
+
+Environment="PATH=/var/lib/ansibot/venv/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+ExecStart=/var/lib/ansibot/venv/bin/python /var/lib/ansibot/ansibullbot/triage_ansible.py --daemonize --daemonize_interval=300 --debug --force --logfile /var/log/ansibullbot.log --resume --ignore_galaxy --skip_no_update --dump_actions
+
+WorkingDirectory=/var/lib/ansibot/ansibullbot
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# cat /etc/systemd/system/ansibullbot-receiver.service
+
+# Ansible managed
+[Unit]
+Description=Ansibullbot Receiver
+After=syslog.target
+
+[Service]
+Type=simple
+User=ansibot
+Group=ansibot
+
+Restart=on-failure
+
+ExecStart=/var/lib/ansibot/venv/bin/python /var/lib/ansibot/ansibullbot/scripts/ansibot_receiver.py
+WorkingDirectory=/var/lib/ansibot/ansibullbot
+
+[Install]
+WantedBy=multi-user.target
+```
+10. Run the units via `systemctl`.
+
 
 ## Updating Ansible Playbooks and Roles used by Ansibullbot ##
 
