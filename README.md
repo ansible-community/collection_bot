@@ -1,6 +1,6 @@
-[![Build Status](https://dev.azure.com/ansible/ansibullbot/_apis/build/status/ansible.ansibullbot?branchName=devel)](https://dev.azure.com/ansible/ansibullbot/_build/latest?definitionId=12&branchName=devel) [![codecov](https://codecov.io/gh/ansible/ansibullbot/branch/devel/graph/badge.svg)](https://codecov.io/gh/ansible/ansibullbot)
+ [![codecov](https://codecov.io/gh/ansible/ansibullbot/branch/devel/graph/badge.svg)](https://codecov.io/gh/ansible/ansibullbot)
 
-See the Ansibullbot Project Board for what is being worked on:  [![Project Board](https://img.shields.io/github/issues/ansible/ansibullbot.svg)](https://github.com/ansible/ansibullbot/projects/1)
+
 
 # User Guide
 
