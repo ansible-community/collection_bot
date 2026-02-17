@@ -39,11 +39,13 @@ The Ansibull Triage Bot serves many functions:
 * Automatically labels issues and pull requests based on keywords or affected files.
 
 ## For issue submitters
-Please note that if you have a question about how to use this feature or module with Ansible, that's probably something you should ask on the [ansible-project](https://groups.google.com/forum/#!forum/ansible-project) mailing list, rather than submitting a bug report. For more details, please see [I’ve Got A Question](http://docs.ansible.com/ansible/community.html#i-ve-got-a-question).
+
+Please note that if you have a question about how to use this feature or module with Ansible, that's probably something you should ask on the [Ansible Forum](https://forum.ansible.com/), rather than submitting a bug report. For more details, please see [Communicating with the Ansible community](https://docs.ansible.com/projects/ansible/latest/community/communication.html).
 
 If the feature/module maintainer or ansibullbot needs further information, please respond to the request, so that you can help the devs to help you!
 
 The bot requires a minimal subset of information from the issue template:
+
 * issue type
 * component name
 * ansible version
@@ -64,6 +66,7 @@ Expect the bot to do a few things:
 If you are not sure who the issue is waiting on, please use the [`bot_status`](#cmd-bot_status) command.
 
 ## For pull request submitters
+
 Expect the bot to do a few things:
 
 1. All of the items described in the for [issue submitters](#for-issue-submitters) section.
@@ -111,6 +114,7 @@ The collection maintainers approve these pull requests and it may take some time
 Thanks in advance for taking a look at issues and pull requests and for your ongoing maintenance. If you are unable to troubleshoot or review this issue/pull request with the information provided, please ping the submitter of the issue in a comment to let them know.
 
 ### How to disable notifications
+
 If you wish to stop receiving notifications from Ansibullbot to issues and pull requests you need to add your github name into the `ignored` key under plugin you are no longer insterested in in the [BOTMETA.yml](https://github.com/ansible/ansible/blob/devel/.github/BOTMETA.yml) file and send a pull request against the [ansible/ansible](https://github.com/ansible/ansible) repository. See an example below:
 ```yaml
 ...
@@ -123,6 +127,7 @@ $modules/cloud/amazon/:
 If the plugin was migrated to a [collection](https://github.com/ansible-collections) you also need to add an ignore entry into `BOTMETA.yml` in the collection repository as well.
 
 ## For anyone else
+
 Reactions help us determine how many people are interested in a pull request or have run across a similar bug. Please leave a +1 [reaction](https://github.com/blog/2119-add-reactions-to-pull-requests-issues-and-comments) (:+1:) if that applies to you. Any additional details you can provide, such as your usecase, environment, steps to reproduce, or workarounds you have found, can help out with resolving issues or getting pull requests merged.
 
 ## Commands
